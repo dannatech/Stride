@@ -64,9 +64,14 @@ the same handlers the phone UI uses.
    - When prompted for a companion app, choose the existing `Stride` iOS
      target — this embeds the watch app in the iPhone app's bundle, which is
      required for `WCSession` pairing to work.
-   - Xcode will suggest a bundle id like `com.stride.app.watchkitapp` (must
-     be the phone target's bundle id, `com.stride.app`, plus a suffix) —
-     accept it.
+   - Xcode will suggest a bundle id like `com.gracieudensi.stride.watchkitapp`
+     (must be the phone target's bundle id, `com.gracieudensi.stride`, plus a
+     suffix) — accept it. If Xcode says that identifier isn't available
+     either, your Apple Developer team already has it registered elsewhere,
+     or someone else does — bundle ids are globally unique, so pick another
+     unique suffix/string and keep the phone (`mobile/app.json`) and watch
+     target identifiers matching this same `<phone-id>` + `.watchkitapp`
+     pattern.
 
 4. **Replace the generated boilerplate.** Xcode scaffolds its own
    `ContentView.swift` / `StrideWatchApp.swift` for the new target — delete

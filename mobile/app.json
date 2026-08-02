@@ -9,7 +9,7 @@
     "backgroundColor": "#111214",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.stride.app"
+      "bundleIdentifier": "com.gracieudensi.stride"
     },
     "android": {
       "adaptiveIcon": {
