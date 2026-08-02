@@ -3,9 +3,10 @@ import { View, ScrollView } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { T } from "./src/theme";
-import { SPRINT_GOAL, CORE_EXERCISES, FALLBACK_AI, phaseFor } from "./src/data";
+import { SPRINTS_TODAY, SPRINT_GOAL, CORE_EXERCISES, FALLBACK_AI, phaseFor } from "./src/data";
 import { TabBar } from "./src/components";
 import { supabase } from "./src/supabaseClient";
+import { sendWatchUpdate, addWatchActionListener } from "./modules/stride-watch-connectivity";
 import {
   Splash,
   Login,
@@ -188,6 +189,63 @@ Context:
   }, [authState]);
 
   const cues = aiLoading ? FALLBACK_AI.liveCues : ai.liveCues;
+
+  // Push the current state snapshot to the paired Apple Watch app whenever
+  // anything it displays changes. The watch has no server access of its
+  // own — it's a thin client mirroring whatever the phone sends it.
+  useEffect(() => {
+    sendWatchUpdate({
+      authenticated: authState === "app",
+      readiness,
+      cycleDay,
+      cycleLength,
+      periodLength,
+      sprintsToday: SPRINTS_TODAY,
+      coreToday,
+      session,
+      ai: aiLoading ? FALLBACK_AI : ai,
+    });
+  }, [authState, readiness, cycleDay, cycleLength, periodLength, coreToday, session, ai, aiLoading]);
+
+  // Actions performed on the watch (Lap, log reps, log period, etc.) arrive
+  // here and are routed through the same handlers the phone UI uses, so
+  // state stays consistent regardless of which device triggered the change.
+  useEffect(() => {
+    const unsubscribe = addWatchActionListener(({ action, params }) => {
+      switch (action) {
+        case "lap":
+          onLap();
+          break;
+        case "logReps":
+          setCoreToday((c) => ({ ...c, [params.id]: params.value }));
+          break;
+        case "startHold":
+          onStartHold(params.id);
+          break;
+        case "stopHold":
+          setCoreToday((c) => ({ ...c, [params.id]: params.value }));
+          setHoldingId(null);
+          setCoreHr(96);
+          break;
+        case "logPeriod":
+          setCycleDay(1);
+          break;
+        case "advanceDay":
+          setCycleDay((d) => (d % cycleLength) + 1);
+          break;
+        case "setSoreness":
+          setRecovery((r) => ({ ...r, soreness: params.value }));
+          break;
+        case "toggleStretch":
+          setRecovery((r) => ({ ...r, stretchDone: params.value }));
+          break;
+        default:
+          break;
+      }
+    });
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cycleLength]);
 
   let body;
   if (authState === "splash") body = <Splash />;
