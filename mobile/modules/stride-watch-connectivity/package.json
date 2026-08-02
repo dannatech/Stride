@@ -1,0 +1,9 @@
+{
+  "name": "stride-watch-connectivity",
+  "version": "1.0.0",
+  "description": "WatchConnectivity bridge between the Stride iPhone app and its watchOS companion",
+  "main": "index.js",
+  "author": "Stride",
+  "license": "UNLICENSED",
+  "private": true
+}
