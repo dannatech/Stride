@@ -1,10 +1,12 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, Pressable, Animated, Easing } from "react-native";
-import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, G, LinearGradient as SvgGradient, Path, Stop } from "react-native-svg";
+
+const AnimatedG = Animated.createAnimatedComponent(G);
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { T, card } from "./theme";
-import { hrZoneFor } from "./data";
+import { hrZoneFor, TIER_STYLE } from "./data";
 
 /* ───────── small shared components ───────── */
 
@@ -57,6 +59,36 @@ export function Logomark({ size = 72, radius = 22, fontSize = 32 }) {
     >
       <Text style={{ color: "#fff", fontWeight: "700", fontSize }}>S</Text>
     </LinearGradient>
+  );
+}
+
+export function RunningLegs({ size = 90, color = T.accent1 }) {
+  const swing = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(swing, { toValue: 1, duration: 320, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+        Animated.timing(swing, { toValue: 0, duration: 320, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [swing]);
+
+  const frontRotation = swing.interpolate({ inputRange: [0, 1], outputRange: [-30, 30] });
+  const backRotation = swing.interpolate({ inputRange: [0, 1], outputRange: [30, -30] });
+
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <AnimatedG origin="50,36" rotation={backRotation}>
+        <Path d="M50 36 L38 68 L30 94 L42 94 L52 68 L56 36 Z" fill={color} opacity={0.5} />
+      </AnimatedG>
+      <AnimatedG origin="50,36" rotation={frontRotation}>
+        <Path d="M50 36 L62 68 L70 94 L58 94 L48 68 L44 36 Z" fill={color} />
+      </AnimatedG>
+      <Circle cx="50" cy="22" r="10" fill={color} />
+    </Svg>
   );
 }
 
@@ -252,6 +284,66 @@ export function CoreExerciseRow({ ex, logged, isHolding, holdElapsed, onLogReps,
           <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>{isHolding ? "Stop" : "Start"}</Text>
         </Pressable>
       )}
+    </View>
+  );
+}
+
+/* ───────── gamification components ───────── */
+
+export function AchievementBadge({ achievement, unlocked, ctx, onPress }) {
+  const tier = TIER_STYLE[achievement.tier];
+  const prog = !unlocked && achievement.progress ? achievement.progress(ctx) : null;
+  const pct = prog ? Math.min(1, prog.invert ? prog.target / Math.max(prog.current, 1) : prog.current / prog.target) : 0;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={card({
+        padding: 14,
+        opacity: unlocked ? 1 : 0.55,
+        shadowColor: unlocked && tier.glow ? tier.color : "#000",
+        shadowOpacity: unlocked && tier.glow ? 0.6 : 0.35,
+        shadowRadius: unlocked && tier.glow ? 16 : 24,
+        borderWidth: unlocked && tier.glow ? 1 : 0,
+        borderColor: tier.color,
+      })}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            backgroundColor: unlocked ? `${tier.color}22` : T.hair,
+            borderWidth: 1.5,
+            borderColor: unlocked ? tier.color : T.hair,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={{ fontSize: 16 }}>{unlocked ? (achievement.tier === "legendary" ? "★" : "●") : "🔒"}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: T.ink }}>{achievement.name}</Text>
+            <Text style={{ fontSize: 9, fontWeight: "700", color: tier.color, textTransform: "uppercase" }}>{tier.label}</Text>
+          </View>
+          <Text style={{ fontSize: 11, color: T.sub, marginTop: 2 }}>{achievement.desc}</Text>
+          {prog && (
+            <View style={{ height: 4, backgroundColor: T.hair, borderRadius: 2, marginTop: 6, overflow: "hidden" }}>
+              <View style={{ height: "100%", width: `${pct * 100}%`, backgroundColor: tier.color, borderRadius: 2 }} />
+            </View>
+          )}
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+export function TierPill({ tier }) {
+  const t = TIER_STYLE[tier];
+  return (
+    <View style={{ borderWidth: 1, borderColor: t.color, borderRadius: 999, paddingVertical: 2, paddingHorizontal: 8 }}>
+      <Text style={{ fontSize: 10, fontWeight: "700", color: t.color, textTransform: "uppercase" }}>{t.label}</Text>
     </View>
   );
 }

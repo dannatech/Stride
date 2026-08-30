@@ -1,20 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TextInput, Pressable } from "react-native";
 import { T, card } from "./theme";
 import {
-  SPRINTS_TODAY,
   SPRINT_GOAL,
-  WEEK_BARS,
   TODAY_IDX,
   DAY_LETTERS,
-  HISTORY,
-  PACE_MINUTES,
-  SPRINT_MINUTES,
   CORE_EXERCISES,
   CORE_GOAL,
   CORE_HISTORY,
-  VO2MAX_HISTORY,
-  VO2MAX_LABELS,
   fmtPace,
   fmtClock,
   readinessColor,
@@ -23,15 +16,23 @@ import {
   PHASE_INFO,
   vo2maxCategory,
   estimateVO2,
+  ACHIEVEMENTS,
+  TIER_STYLE,
+  RPE_LABELS,
+  achievementContext,
+  computeGamification,
+  estimateTSS,
+  computeACWR,
+  confidenceBreakdown,
 } from "./data";
-import { Eyebrow, Chevron, Logomark, BackHeader, StatCard, ProgressRing, BreathingGuide, CoreExerciseRow } from "./components";
+import { Eyebrow, Chevron, Logomark, RunningLegs, BackHeader, StatCard, ProgressRing, BreathingGuide, CoreExerciseRow, AchievementBadge } from "./components";
 
 /* ───────── Screens ───────── */
 
 export function Splash() {
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16 }}>
-      <Logomark />
+      <RunningLegs />
       <Text style={{ fontSize: 20, fontWeight: "700", color: T.ink }}>Stride</Text>
     </View>
   );
@@ -137,17 +138,41 @@ export function Login({ onSignIn, onSignUp }) {
   );
 }
 
-export function Summary({ ai, aiLoading, onRegenerate, readiness, cycleDay, cycleLength, openCycle, openRecovery, onSignOut }) {
+export function Summary({
+  ai,
+  aiLoading,
+  onRegenerate,
+  readiness,
+  cycleDay,
+  cycleLength,
+  openCycle,
+  openRecovery,
+  openAchievements,
+  openTrainingLoad,
+  openForm,
+  openDevices,
+  achievementCtx,
+  history,
+  todayStats,
+  weekBars,
+  onSignOut,
+}) {
   const phase = phaseFor(cycleDay);
   const periodIn = cycleLength - cycleDay + 1;
-  const maxBar = Math.max(...WEEK_BARS, 1);
+  const maxBar = Math.max(...weekBars, 1);
   const dots = ["", T.sub, T.accent2, T.accent1];
+  const gamification = computeGamification(achievementCtx);
+  const trainingLoad = computeACWR(history);
+  const now = new Date();
+  const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 18 ? "Good afternoon" : "Good evening";
   return (
     <View style={{ gap: 16 }}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
         <View>
-          <Text style={{ fontSize: 14, color: T.sub }}>Tuesday, July 14</Text>
-          <Text style={{ fontSize: 22, fontWeight: "700", color: T.ink }}>Good morning</Text>
+          <Text style={{ fontSize: 14, color: T.sub }}>
+            {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          </Text>
+          <Text style={{ fontSize: 22, fontWeight: "700", color: T.ink }}>{greeting}</Text>
         </View>
         <Pressable onPress={onSignOut} hitSlop={8}>
           <Text style={{ fontSize: 12, fontWeight: "600", color: T.sub }}>Log Out</Text>
@@ -155,13 +180,13 @@ export function Summary({ ai, aiLoading, onRegenerate, readiness, cycleDay, cycl
       </View>
 
       <View style={card({ padding: 24 })}>
-        <ProgressRing value={SPRINTS_TODAY} goal={SPRINT_GOAL} unit="sprints" />
+        <ProgressRing value={todayStats.sprints} goal={SPRINT_GOAL} unit="sprints" />
       </View>
 
       <View style={{ flexDirection: "row", gap: 10 }}>
-        <StatCard value="17.4 mph" label="Max Speed" />
-        <StatCard value="3.2 mi" label="Distance" />
-        <StatCard value="32:08" label="Duration" />
+        <StatCard value={`${todayStats.maxSpeed.toFixed(1)} mph`} label="Max Speed" />
+        <StatCard value={`${todayStats.distance.toFixed(1)} mi`} label="Distance" />
+        <StatCard value={fmtClock(todayStats.duration)} label="Duration" />
       </View>
 
       <Pressable
@@ -193,6 +218,34 @@ export function Summary({ ai, aiLoading, onRegenerate, readiness, cycleDay, cycl
           <Chevron />
         </View>
       </Pressable>
+
+      <Pressable
+        onPress={openAchievements}
+        style={card({ padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" })}
+      >
+        <View>
+          <Eyebrow color={T.amber}>Achievements</Eyebrow>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: T.ink, marginTop: 4 }}>
+            Level {gamification.level} · {gamification.unlocked.length}/{ACHIEVEMENTS.length} unlocked
+          </Text>
+        </View>
+        <Chevron />
+      </Pressable>
+
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <Pressable onPress={openTrainingLoad} style={card({ padding: 14, flex: 1 })}>
+          <Eyebrow color={T.accent2}>Training Load</Eyebrow>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: T.ink, marginTop: 6 }}>{trainingLoad.risk}</Text>
+        </Pressable>
+        <Pressable onPress={openForm} style={card({ padding: 14, flex: 1 })}>
+          <Eyebrow color={T.accent1}>Form</Eyebrow>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: T.ink, marginTop: 6 }}>View gait data</Text>
+        </Pressable>
+        <Pressable onPress={openDevices} style={card({ padding: 14, flex: 1 })}>
+          <Eyebrow color={T.sub}>Devices</Eyebrow>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: T.ink, marginTop: 6 }}>Fallback tier</Text>
+        </Pressable>
+      </View>
 
       <View style={card({ padding: 16 })}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -228,7 +281,7 @@ export function Summary({ ai, aiLoading, onRegenerate, readiness, cycleDay, cycl
       <View style={card({ padding: 16 })}>
         <Text style={{ fontSize: 15, fontWeight: "700", color: T.ink, marginBottom: 14 }}>This Week</Text>
         <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, height: 90 }}>
-          {WEEK_BARS.map((v, i) => (
+          {weekBars.map((v, i) => (
             <View key={i} style={{ flex: 1, alignItems: "center", gap: 6, height: "100%", justifyContent: "flex-end" }}>
               <View
                 style={{
@@ -249,110 +302,22 @@ export function Summary({ ai, aiLoading, onRegenerate, readiness, cycleDay, cycl
   );
 }
 
-export function Live({ session, onLap, cues }) {
-  const { elapsed, pace, speed, cadence, hr, laps, sprintIdx } = session;
-  const cue = cues[Math.floor(elapsed / 8) % cues.length];
-  return (
-    <View style={{ gap: 16 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 }}>
-        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: T.accent1 }} />
-        <Text style={{ fontSize: 12, fontWeight: "600", color: T.sub }}>Apple Watch Connected</Text>
-      </View>
-
-      <View style={card({ paddingVertical: 10, paddingHorizontal: 16, alignItems: "center" })}>
-        <Text style={{ fontSize: 13, fontStyle: "italic", color: T.ink, textAlign: "center" }}>"{cue}"</Text>
-      </View>
-
-      <BreathingGuide hr={hr} compact />
-
-      <View style={{ alignItems: "center" }}>
-        <Eyebrow color={T.sub}>Elapsed</Eyebrow>
-        <Text style={{ fontSize: 52, fontWeight: "800", color: T.ink, fontVariant: ["tabular-nums"], lineHeight: 58 }}>
-          {fmtClock(elapsed)}
-        </Text>
-        <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 8 }}>
-          <Text style={{ fontSize: 38, fontWeight: "800", color: T.accent1 }}>{fmtPace(pace)}</Text>
-          <Text style={{ fontSize: 15, color: T.sub, marginLeft: 4, marginBottom: 4 }}>/mi</Text>
-        </View>
-      </View>
-
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <View style={{ width: "48%" }}>
-          <StatCard value={`${(elapsed * 0.0028 + 0.4).toFixed(2)} mi`} label="Distance" />
-        </View>
-        <View style={{ width: "48%" }}>
-          <StatCard value={`${speed.toFixed(1)} mph`} label="Speed" />
-        </View>
-        <View style={{ width: "48%" }}>
-          <StatCard value={`${Math.round(cadence)} spm`} label="Cadence" />
-        </View>
-        <View style={{ width: "48%" }}>
-          <StatCard value={`${Math.round(hr)} bpm`} label="Heart Rate" valueColor={T.red} />
-        </View>
-        <View style={{ width: "48%" }}>
-          <StatCard value={estimateVO2(speed).toFixed(1)} label="Est. VO2 (ml/kg/min)" valueColor={T.accent2} />
-        </View>
-      </View>
-
-      <View style={{ alignItems: "center" }}>
-        <Text style={{ fontSize: 13, fontWeight: "600", color: T.ink, marginBottom: 10 }}>
-          Sprint {sprintIdx} of {SPRINT_GOAL}
-        </Text>
-        <View style={{ flexDirection: "row", justifyContent: "center", gap: 8 }}>
-          {Array.from({ length: SPRINT_GOAL }).map((_, i) => (
-            <View key={i} style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: i < sprintIdx ? T.accent1 : T.hair }} />
-          ))}
-        </View>
-      </View>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <Pressable onPress={onLap} style={{ flex: 1, backgroundColor: T.accent1, borderRadius: 999, paddingVertical: 14, alignItems: "center" }}>
-          <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Lap</Text>
-        </Pressable>
-        <Pressable
-          style={{ flex: 1, backgroundColor: "transparent", borderWidth: 1.5, borderColor: T.hair, borderRadius: 999, paddingVertical: 14, alignItems: "center" }}
-        >
-          <Text style={{ color: T.ink, fontWeight: "700", fontSize: 15 }}>Pause</Text>
-        </Pressable>
-      </View>
-
-      {laps.length > 0 && (
-        <View style={card({ padding: 16 })}>
-          {laps.map((l, i) => (
-            <View
-              key={i}
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                paddingVertical: 9,
-                borderBottomWidth: i < laps.length - 1 ? 1 : 0,
-                borderBottomColor: T.hair,
-              }}
-            >
-              <Text style={{ color: T.ink, fontWeight: "600", fontSize: 13 }}>Lap {i + 1}</Text>
-              <Text style={{ color: T.sub, fontSize: 13 }}>{fmtPace(l)} /mi</Text>
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-export function Pace() {
-  const avg = PACE_MINUTES.reduce((a, b) => a + b, 0) / PACE_MINUTES.length;
-  const min = Math.min(...PACE_MINUTES);
-  const max = Math.max(...PACE_MINUTES);
-  const currentVO2 = VO2MAX_HISTORY[VO2MAX_HISTORY.length - 1];
-  const vo2Cat = vo2maxCategory(currentVO2);
-  const vo2Min = Math.min(...VO2MAX_HISTORY);
-  const vo2Max = Math.max(...VO2MAX_HISTORY);
+export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels }) {
+  const hasPace = paceMinutes.length > 0;
+  const hasVO2 = vo2History.length > 0;
+  const avg = hasPace ? paceMinutes.reduce((a, b) => a + b, 0) / paceMinutes.length : 0;
+  const min = hasPace ? Math.min(...paceMinutes) : 0;
+  const max = hasPace ? Math.max(...paceMinutes) : 0;
+  const currentVO2 = hasVO2 ? vo2History[vo2History.length - 1] : null;
+  const vo2Cat = hasVO2 ? vo2maxCategory(currentVO2) : null;
+  const vo2Min = hasVO2 ? Math.min(...vo2History) : 0;
+  const vo2Max = hasVO2 ? Math.max(...vo2History) : 0;
   return (
     <View style={{ gap: 16 }}>
       <View>
         <Text style={{ fontSize: 13, color: T.sub }}>Average Pace</Text>
         <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
-          <Text style={{ fontSize: 30, fontWeight: "800", color: T.ink }}>{fmtPace(avg)}</Text>
+          <Text style={{ fontSize: 30, fontWeight: "800", color: T.ink }}>{hasPace ? fmtPace(avg) : "—:—"}</Text>
           <Text style={{ fontSize: 15, color: T.sub, fontWeight: "400", marginLeft: 4, marginBottom: 3 }}>/mi</Text>
         </View>
       </View>
@@ -362,83 +327,99 @@ export function Pace() {
           <View>
             <Eyebrow color={T.accent2}>VO2max Estimate</Eyebrow>
             <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 4 }}>
-              <Text style={{ fontSize: 26, fontWeight: "800", color: T.ink }}>{currentVO2.toFixed(1)}</Text>
+              <Text style={{ fontSize: 26, fontWeight: "800", color: T.ink }}>{hasVO2 ? currentVO2.toFixed(1) : "—"}</Text>
               <Text style={{ fontSize: 13, color: T.sub, fontWeight: "400", marginLeft: 4, marginBottom: 2 }}>ml/kg/min</Text>
             </View>
           </View>
-          <View style={{ paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999, backgroundColor: `${vo2Cat.color}33` }}>
-            <Text style={{ fontSize: 12, fontWeight: "700", color: vo2Cat.color }}>{vo2Cat.label}</Text>
+          {vo2Cat && (
+            <View style={{ paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999, backgroundColor: `${vo2Cat.color}33` }}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: vo2Cat.color }}>{vo2Cat.label}</Text>
+            </View>
+          )}
+        </View>
+        {hasVO2 ? (
+          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6, height: 60, marginTop: 16 }}>
+            {vo2History.map((v, i) => {
+              const h = 25 + ((v - vo2Min) / (vo2Max - vo2Min || 1)) * 75;
+              return (
+                <View key={i} style={{ flex: 1, alignItems: "center", gap: 4, height: "100%", justifyContent: "flex-end" }}>
+                  <View
+                    style={{
+                      width: "100%",
+                      height: `${h}%`,
+                      borderRadius: 4,
+                      backgroundColor: i === vo2History.length - 1 ? T.accent2 : T.hair,
+                    }}
+                  />
+                  <Text style={{ fontSize: 8, color: T.sub }}>{vo2Labels[i]}</Text>
+                </View>
+              );
+            })}
           </View>
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6, height: 60, marginTop: 16 }}>
-          {VO2MAX_HISTORY.map((v, i) => {
-            const h = 25 + ((v - vo2Min) / (vo2Max - vo2Min || 1)) * 75;
-            return (
-              <View key={i} style={{ flex: 1, alignItems: "center", gap: 4, height: "100%", justifyContent: "flex-end" }}>
-                <View
-                  style={{
-                    width: "100%",
-                    height: `${h}%`,
-                    borderRadius: 4,
-                    backgroundColor: i === VO2MAX_HISTORY.length - 1 ? T.accent2 : T.hair,
-                  }}
-                />
-                <Text style={{ fontSize: 8, color: T.sub }}>{VO2MAX_LABELS[i]}</Text>
-              </View>
-            );
-          })}
-        </View>
+        ) : (
+          <Text style={{ fontSize: 12, color: T.sub, marginTop: 12 }}>Not enough runs yet to estimate VO2max.</Text>
+        )}
       </View>
 
-      <View style={card({ padding: 16 })}>
-        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6, height: 120 }}>
-          {PACE_MINUTES.map((p, i) => {
-            const h = 20 + ((max - p) / (max - min)) * 80;
-            return (
-              <View key={i} style={{ flex: 1, alignItems: "center", gap: 5, height: "100%", justifyContent: "flex-end" }}>
-                <View
-                  style={{
-                    width: "100%",
-                    height: `${h}%`,
-                    borderRadius: 5,
-                    backgroundColor: SPRINT_MINUTES.has(i) ? T.accent2 : T.accent1,
-                  }}
-                />
-                <Text style={{ fontSize: 9, color: T.sub }}>{i + 1}</Text>
-              </View>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={card({ paddingHorizontal: 16 })}>
-        {PACE_MINUTES.map((p, i) => (
-          <View
-            key={i}
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              paddingVertical: 10,
-              borderBottomWidth: i < PACE_MINUTES.length - 1 ? 1 : 0,
-              borderBottomColor: T.hair,
-            }}
-          >
-            <Text style={{ color: T.sub, fontWeight: "600", fontSize: 13 }}>Min {i + 1}</Text>
-            <Text style={{ color: SPRINT_MINUTES.has(i) ? T.accent2 : T.ink, fontWeight: "700", fontSize: 13 }}>
-              {fmtPace(p)} /mi
-            </Text>
+      {hasPace ? (
+        <>
+          <View style={card({ padding: 16 })}>
+            <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6, height: 120 }}>
+              {paceMinutes.map((p, i) => {
+                const h = 20 + ((max - p) / (max - min || 1)) * 80;
+                return (
+                  <View key={i} style={{ flex: 1, alignItems: "center", gap: 5, height: "100%", justifyContent: "flex-end" }}>
+                    <View
+                      style={{
+                        width: "100%",
+                        height: `${h}%`,
+                        borderRadius: 5,
+                        backgroundColor: sprintMinutes.has(i) ? T.accent2 : T.accent1,
+                      }}
+                    />
+                    <Text style={{ fontSize: 9, color: T.sub }}>{i + 1}</Text>
+                  </View>
+                );
+              })}
+            </View>
           </View>
-        ))}
-      </View>
+
+          <View style={card({ paddingHorizontal: 16 })}>
+            {paceMinutes.map((p, i) => (
+              <View
+                key={i}
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingVertical: 10,
+                  borderBottomWidth: i < paceMinutes.length - 1 ? 1 : 0,
+                  borderBottomColor: T.hair,
+                }}
+              >
+                <Text style={{ color: T.sub, fontWeight: "600", fontSize: 13 }}>Min {i + 1}</Text>
+                <Text style={{ color: sprintMinutes.has(i) ? T.accent2 : T.ink, fontWeight: "700", fontSize: 13 }}>
+                  {fmtPace(p)} /mi
+                </Text>
+              </View>
+            ))}
+          </View>
+        </>
+      ) : (
+        <View style={card({ padding: 16 })}>
+          <Text style={{ fontSize: 13, color: T.sub, textAlign: "center" }}>
+            No pace data yet — complete a run to see your minute-by-minute splits here.
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
 
-export function History() {
+export function History({ history, monthlyHistory }) {
   const [range, setRange] = useState("Weekly");
-  const deltas = HISTORY.slice(0, -1).map((w, i) => ({
+  const deltas = history.slice(0, -1).map((w, i) => ({
     date: w.date,
-    delta: w.pace - HISTORY[i + 1].pace,
+    delta: w.pace - history[i + 1].pace,
   }));
   const maxAbs = Math.max(...deltas.map((d) => Math.abs(d.delta)), 1);
   return (
@@ -451,6 +432,11 @@ export function History() {
       <View style={card({ padding: 16 })}>
         <Text style={{ fontSize: 14, fontWeight: "700", color: T.ink }}>Pace Change, Day to Day</Text>
         <Text style={{ fontSize: 11, color: T.sub, marginBottom: 16 }}>vs. the previous run · faster ↑ slower ↓</Text>
+        {deltas.length === 0 ? (
+          <Text style={{ fontSize: 13, color: T.sub, textAlign: "center", paddingVertical: 30 }}>
+            Complete at least two runs to see how your pace is trending.
+          </Text>
+        ) : (
         <View style={{ flexDirection: "row", gap: 10, height: 130 }}>
           {[...deltas].reverse().map((d, i) => {
             const faster = d.delta < 0;
@@ -479,6 +465,7 @@ export function History() {
             );
           })}
         </View>
+        )}
       </View>
 
       <View style={{ flexDirection: "row", backgroundColor: T.bg, borderWidth: 1, borderColor: T.hair, borderRadius: 999, padding: 3 }}>
@@ -500,36 +487,71 @@ export function History() {
       </View>
 
       <View style={card({ paddingHorizontal: 16 })}>
-        {HISTORY.map((w, i) => {
-          const prev = HISTORY[i + 1];
-          const faster = prev ? w.pace < prev.pace : true;
-          return (
-            <View
-              key={i}
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                paddingVertical: 13,
-                borderBottomWidth: i < HISTORY.length - 1 ? 1 : 0,
-                borderBottomColor: T.hair,
-              }}
-            >
-              <View>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: T.ink }}>{w.date}</Text>
-                <Text style={{ fontSize: 12, color: T.sub }}>
-                  {w.sprints} sprints · {w.distance}
-                </Text>
-              </View>
-              <View style={{ alignItems: "flex-end" }}>
-                <Text style={{ fontSize: 14, fontWeight: "700", color: T.ink }}>{fmtPace(w.pace)} /mi</Text>
-                <Text style={{ fontSize: 11, fontWeight: "600", color: faster ? T.accent1 : T.sub }}>
-                  {faster ? "↑ faster" : "↓ slower"}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
+        {(range === "Weekly" ? history.length : monthlyHistory.length) === 0 ? (
+          <Text style={{ fontSize: 13, color: T.sub, textAlign: "center", paddingVertical: 20 }}>
+            No workouts logged yet. Finish a run to see it here.
+          </Text>
+        ) : range === "Weekly"
+          ? history.map((w, i) => {
+              const prev = history[i + 1];
+              const faster = prev ? w.pace < prev.pace : true;
+              return (
+                <View
+                  key={i}
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    paddingVertical: 13,
+                    borderBottomWidth: i < history.length - 1 ? 1 : 0,
+                    borderBottomColor: T.hair,
+                  }}
+                >
+                  <View>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: T.ink }}>{w.date}</Text>
+                    <Text style={{ fontSize: 12, color: T.sub }}>
+                      {w.sprints} sprints · {w.distance}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: T.ink }}>{fmtPace(w.pace)} /mi</Text>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: faster ? T.accent1 : T.sub }}>
+                      {faster ? "↑ faster" : "↓ slower"}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })
+          : monthlyHistory.map((w, i) => {
+              const prev = monthlyHistory[i + 1];
+              const faster = prev ? w.avgPace < prev.avgPace : true;
+              return (
+                <View
+                  key={i}
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    paddingVertical: 13,
+                    borderBottomWidth: i < monthlyHistory.length - 1 ? 1 : 0,
+                    borderBottomColor: T.hair,
+                  }}
+                >
+                  <View>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: T.ink }}>{w.period}</Text>
+                    <Text style={{ fontSize: 12, color: T.sub }}>
+                      {w.runs} runs · {w.distance}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: T.ink }}>{fmtPace(w.avgPace)} /mi avg</Text>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: faster ? T.accent1 : T.sub }}>
+                      {faster ? "↑ faster" : "↓ slower"}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
       </View>
     </View>
   );
@@ -817,6 +839,9 @@ export function Core({ coreToday, coreCompleted, holdingId, holdElapsed, hr, onL
 
       <View style={card({ padding: 16 })}>
         <Text style={{ fontSize: 15, fontWeight: "700", color: T.ink, marginBottom: 12 }}>Recent Sessions</Text>
+        {CORE_HISTORY.length === 0 && (
+          <Text style={{ fontSize: 13, color: T.sub }}>No core sessions yet — finish today's to start your history.</Text>
+        )}
         {CORE_HISTORY.map((h, i) => (
           <View
             key={i}
@@ -835,6 +860,274 @@ export function Core({ coreToday, coreCompleted, holdingId, holdElapsed, hr, onL
           </View>
         ))}
       </View>
+    </View>
+  );
+}
+
+export function AchievementsScreen({ ctx, onBack }) {
+  const { unlocked, unlockedIds, totalXP, level, xpIntoLevel } = computeGamification(ctx);
+  const categories = [...new Set(ACHIEVEMENTS.map((a) => a.category))];
+  const featured = unlocked.filter((a) => a.tier === "gold" || a.tier === "legendary");
+  return (
+    <View style={{ gap: 16, paddingBottom: 30 }}>
+      <BackHeader title="Achievements" onBack={onBack} />
+
+      <View style={card({ padding: 20 })}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <View>
+            <Eyebrow>Level {level}</Eyebrow>
+            <Text style={{ fontSize: 26, fontWeight: "800", color: T.ink, marginTop: 4 }}>{totalXP} XP</Text>
+          </View>
+          <Text style={{ fontSize: 13, color: T.sub, textAlign: "right" }}>
+            {unlocked.length}/{ACHIEVEMENTS.length}{"\n"}unlocked
+          </Text>
+        </View>
+        <View style={{ height: 6, backgroundColor: T.hair, borderRadius: 3, marginTop: 14, overflow: "hidden" }}>
+          <View style={{ height: "100%", width: `${xpIntoLevel}%`, backgroundColor: T.accent1, borderRadius: 3 }} />
+        </View>
+        <Text style={{ fontSize: 11, color: T.sub, marginTop: 6 }}>
+          {xpIntoLevel}/100 XP to Level {level + 1}
+        </Text>
+      </View>
+
+      {featured.length > 0 && (
+        <View>
+          <Eyebrow color={T.amber}>Trophy Case</Eyebrow>
+          <View style={{ gap: 10, marginTop: 10 }}>
+            {featured.map((a) => (
+              <AchievementBadge key={a.id} achievement={a} unlocked ctx={ctx} onPress={() => {}} />
+            ))}
+          </View>
+        </View>
+      )}
+
+      {categories.map((cat) => (
+        <View key={cat}>
+          <Eyebrow>{cat}</Eyebrow>
+          <View style={{ gap: 10, marginTop: 10 }}>
+            {ACHIEVEMENTS.filter((a) => a.category === cat).map((a) => (
+              <AchievementBadge key={a.id} achievement={a} unlocked={unlockedIds.has(a.id)} ctx={ctx} onPress={() => {}} />
+            ))}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+export function TrainingLoadScreen({ readiness, rpeLog, history, confidenceScore, onBack }) {
+  const acwr = computeACWR(history);
+  const { risk, riskColor } = acwr;
+  const confidence = confidenceBreakdown(history);
+  const lastRun = history[0];
+  const avgPace = history.length ? history.reduce((s, w) => s + w.pace, 0) / history.length : 0;
+  const vsBaseline = lastRun ? lastRun.pace - avgPace : 0;
+  return (
+    <View style={{ gap: 16, paddingBottom: 30 }}>
+      <BackHeader title="Training Load" onBack={onBack} />
+
+      <View style={card({ padding: 18 })}>
+        <Eyebrow>Acute:Chronic Workload Ratio</Eyebrow>
+        {acwr.hasData ? (
+          <>
+            <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 6 }}>
+              <Text style={{ fontSize: 30, fontWeight: "800", color: T.ink }}>{acwr.ratio}</Text>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: riskColor }}>{risk}</Text>
+            </View>
+            <Text style={{ fontSize: 12, color: T.sub, marginTop: 6 }}>
+              Acute (recent 3 runs): ~{acwr.acute} · Chronic (all logged runs): ~{acwr.chronic} relative-effort units
+            </Text>
+            <Text style={{ fontSize: 11, color: T.sub, marginTop: 8, fontStyle: "italic" }}>
+              Estimated from pace/distance — not a substitute for how your body actually feels.
+            </Text>
+          </>
+        ) : (
+          <Text style={{ fontSize: 13, color: T.sub, marginTop: 8 }}>
+            Log a few runs to see your acute:chronic workload ratio here.
+          </Text>
+        )}
+      </View>
+
+      {lastRun ? (
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <StatCard value={`${estimateTSS(lastRun)}`} label="Last Run Effort (est.)" />
+          <StatCard
+            value={`${vsBaseline <= 0 ? "−" : "+"}${Math.abs(Math.round(vsBaseline))}s`}
+            label="vs. Your Baseline"
+            valueColor={vsBaseline <= 0 ? T.accent1 : T.red}
+          />
+        </View>
+      ) : (
+        <View style={card({ padding: 16 })}>
+          <Text style={{ fontSize: 13, color: T.sub }}>No runs logged yet — complete a workout to see your effort here.</Text>
+        </View>
+      )}
+
+      <View style={card({ padding: 18 })}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Eyebrow color={T.accent2}>Data Confidence</Eyebrow>
+          <Text style={{ fontSize: 20, fontWeight: "800", color: T.accent2 }}>{history.length ? confidenceScore : "—"}</Text>
+        </View>
+        <View style={{ gap: 8, marginTop: 12 }}>
+          {confidence.map((row) => (
+            <View key={row.label} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 12, color: T.sub }}>{row.label}</Text>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: row.good ? T.accent1 : T.ink }}>{row.value}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={card({ padding: 18 })}>
+        <Eyebrow>Perceived Effort Log</Eyebrow>
+        {rpeLog.length === 0 ? (
+          <Text style={{ fontSize: 12, color: T.sub, marginTop: 8 }}>
+            Rate your effort (1–10) when you end a workout to build this log.
+          </Text>
+        ) : (
+          <View style={{ gap: 8, marginTop: 10 }}>
+            {rpeLog.map((r, i) => (
+              <View key={i} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: T.ink, fontSize: 13 }}>
+                  RPE {r.rpe} · {RPE_LABELS[r.rpe] || ""}
+                </Text>
+                <Text style={{ color: T.sub, fontSize: 13 }}>{r.hr} bpm avg</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+export function FormScreen({ session, onBack }) {
+  const { cadence, hr } = session;
+  const groundContactMs = Math.round(240 - (cadence - 172) * 1.4);
+  const verticalOscCm = Math.round((9.2 - (cadence - 172) * 0.03) * 10) / 10;
+  const strikePattern = cadence > 175 ? "Midfoot" : cadence > 168 ? "Heel" : "Forefoot";
+  const symmetryPct = 96 + Math.round(Math.sin(hr / 7) * 3);
+  const formScore = Math.max(0, Math.min(100, Math.round(72 + (cadence - 172) * 1.8 - Math.abs(100 - symmetryPct) * 2)));
+  const fatigueCurve = [100, 98, 95, 93, 88, 84];
+  return (
+    <View style={{ gap: 16, paddingBottom: 30 }}>
+      <BackHeader title="Form" onBack={onBack} />
+
+      <View style={card({ padding: 20, alignItems: "center" })}>
+        <Eyebrow>Form Score</Eyebrow>
+        <Text style={{ fontSize: 44, fontWeight: "800", color: T.ink, marginTop: 6 }}>{formScore}</Text>
+        <Text style={{ fontSize: 11, color: T.sub, marginTop: 4 }}>Fallback tier (phone-only) · estimated, not diagnostic</Text>
+      </View>
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+        <View style={{ width: "48%" }}>
+          <StatCard value={strikePattern} label="Strike Pattern" />
+        </View>
+        <View style={{ width: "48%" }}>
+          <StatCard value={`${symmetryPct}%`} label="L/R Symmetry" />
+        </View>
+        <View style={{ width: "48%" }}>
+          <StatCard value={`${groundContactMs} ms`} label="Ground Contact" />
+        </View>
+        <View style={{ width: "48%" }}>
+          <StatCard value={`${verticalOscCm} cm`} label="Vertical Oscillation" />
+        </View>
+      </View>
+
+      <View style={card({ padding: 16 })}>
+        <Text style={{ fontSize: 14, fontWeight: "700", color: T.ink, marginBottom: 4 }}>Cadence Fatigue Curve</Text>
+        <Text style={{ fontSize: 11, color: T.sub, marginBottom: 14 }}>% of starting cadence, by kilometer this run</Text>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6, height: 90 }}>
+          {fatigueCurve.map((v, i) => (
+            <View key={i} style={{ flex: 1, alignItems: "center", gap: 5, height: "100%", justifyContent: "flex-end" }}>
+              <View style={{ width: "100%", height: `${v}%`, borderRadius: 4, backgroundColor: v < 90 ? T.amber : T.accent1 }} />
+              <Text style={{ fontSize: 9, color: T.sub }}>{i + 1}k</Text>
+            </View>
+          ))}
+        </View>
+        {fatigueCurve[fatigueCurve.length - 1] < 90 && (
+          <Text style={{ fontSize: 12, color: T.amber, marginTop: 12 }}>
+            Cadence dropped {100 - fatigueCurve[fatigueCurve.length - 1]}% by the final kilometer — a common late-run fatigue
+            signature.
+          </Text>
+        )}
+      </View>
+
+      <View style={card({ padding: 16 })}>
+        <Eyebrow color={T.red}>About These Numbers</Eyebrow>
+        <Text style={{ fontSize: 12, color: T.sub, lineHeight: 18, marginTop: 8 }}>
+          Strike pattern and symmetry are unreliable from a pocketed phone — arm swing and phone placement dominate the
+          signal. For validated running-dynamics data, connect a Garmin Running Dynamics Pod, Stryd, or an Apple Watch
+          SE/Series 6+ in Devices.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const DEVICE_TIERS = [
+  {
+    tier: "Best",
+    color: T.accent1,
+    sources: "Garmin Running Dynamics Pod, Stryd foot pod",
+    metrics: "Ground contact time, vertical oscillation, strike pattern — validated against force-plate research",
+    action: "Connect via Garmin/Stryd API",
+    status: "needs-key",
+  },
+  {
+    tier: "Good",
+    color: T.accent2,
+    sources: "Apple Watch SE / Series 6+",
+    metrics: "Ground contact time, vertical oscillation, stride length via HealthKit running dynamics",
+    action: "Requires a native watchOS companion app",
+    status: "needs-native",
+  },
+  {
+    tier: "Fallback",
+    color: T.sub,
+    sources: "This phone, pocket or armband",
+    metrics: "Cadence is reliable; strike pattern and symmetry are not — arm swing dominates the signal",
+    action: "Active now",
+    status: "active",
+  },
+];
+
+export function DevicesScreen({ onBack }) {
+  return (
+    <View style={{ gap: 16, paddingBottom: 30 }}>
+      <BackHeader title="Devices" onBack={onBack} />
+      <Text style={{ fontSize: 13, color: T.sub }}>
+        Every metric in this app is only as good as its source. Here's exactly what's powering yours.
+      </Text>
+
+      {DEVICE_TIERS.map((d) => (
+        <View key={d.tier} style={card({ padding: 18, borderLeftWidth: 3, borderLeftColor: d.color })}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Eyebrow color={d.color}>{d.tier} Tier</Eyebrow>
+            {d.status === "active" && (
+              <View style={{ borderWidth: 1, borderColor: T.accent1, borderRadius: 999, paddingVertical: 2, paddingHorizontal: 8 }}>
+                <Text style={{ fontSize: 10, fontWeight: "700", color: T.accent1 }}>ACTIVE</Text>
+              </View>
+            )}
+          </View>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: T.ink, marginTop: 8 }}>{d.sources}</Text>
+          <Text style={{ fontSize: 12, color: T.sub, marginTop: 6, lineHeight: 17 }}>{d.metrics}</Text>
+          <View
+            style={{
+              marginTop: 14,
+              backgroundColor: d.status === "active" ? T.hair : "transparent",
+              borderWidth: d.status === "active" ? 0 : 1.5,
+              borderColor: T.hair,
+              borderRadius: 999,
+              paddingVertical: 10,
+              paddingHorizontal: 16,
+              alignSelf: "flex-start",
+            }}
+          >
+            <Text style={{ color: d.status === "active" ? T.sub : d.color, fontWeight: "700", fontSize: 12 }}>{d.action}</Text>
+          </View>
+        </View>
+      ))}
     </View>
   );
 }

@@ -1,116 +1,109 @@
-# Stride watchOS Companion
+# Stride Watch App
 
-SwiftUI source for an Apple Watch companion app that mirrors the phone app's
-tabs (Summary, Live, Core, Pace, History, Coach, plus the Cycle/Recovery
-drill-ins). The watch is a **thin client**: the iPhone app (`mobile/`) is the
-only thing that talks to Supabase / the AI coach, and pushes state down to
-the watch over `WatchConnectivity`. Button taps on the watch (Lap, log reps,
-log period, …) are sent back to the phone, which owns the actual state and
-re-pushes the updated snapshot.
+A real watchOS companion app: the watch does its own GPS tracking and
+HealthKit workout session (better GPS accuracy on the wrist than the phone
+in a pocket), computing pace on-device and streaming it to the phone over
+WatchConnectivity. This replaced an earlier "phone mirrors its screens to
+the watch" approach — that one is gone; this is the one actively developed
+and debugged.
 
-This sandbox has no macOS/Xcode, so none of this has been built or run —
-only written and syntax-reviewed. You'll need a Mac with Xcode to wire it up
-and build it. `mobile/AGENTS.md` notes that Expo has changed recently —
-cross-check the steps below against the versioned docs at
-https://docs.expo.dev/versions/v57.0.0/ if anything here doesn't match what
-Xcode/Expo actually offers you.
+The Swift source lives in `watch/StrideWatchApp/` for version control, but
+**Xcode target creation and wiring are manual steps** — Expo's config
+plugins can't create a watchOS target for you. Do this once per machine:
 
-## What's here
+## 1. Generate the native iOS project (if you haven't already)
 
-```
-watch/StrideWatch/
-  StrideWatchApp.swift          @main entry point
-  ContentView.swift             top-level TabView / auth-gate
-  Theme.swift                   colors matching mobile/src/theme.js
-  Models.swift                  Codable payload types + sample data (mirrors mobile/src/data.js)
-  ConnectivityManager.swift     WCSession delegate; watch-side state store
-  Components/Components.swift  StatTile, ProgressRingView, CoreExerciseRow, etc.
-  Views/                        one SwiftUI view per phone-app screen
-
-mobile/modules/stride-watch-connectivity/
-  index.js                      sendWatchUpdate() / addWatchActionListener() for App.js
-  ios/WatchBridge.swift          phone-side WCSession delegate (singleton)
-  ios/StrideWatchConnectivityModule.swift   Expo Modules API wrapper
-  ios/StrideWatchConnectivity.podspec
-  expo-module.config.json       marks this as an autolinked local Expo module
+```bash
+cd mobile
+npx expo prebuild --platform ios
 ```
 
-`mobile/App.js` already imports `sendWatchUpdate` / `addWatchActionListener`
-and pushes `{ authenticated, readiness, cycleDay, cycleLength, periodLength,
-sprintsToday, coreToday, session, ai }` to the watch whenever that state
-changes, and routes watch-originated actions (`lap`, `logReps`, `startHold`,
-`stopHold`, `logPeriod`, `advanceDay`, `setSoreness`, `toggleStretch`) through
-the same handlers the phone UI uses.
+This creates `ios/Stride.xcworkspace`. **Open the `.xcworkspace`, not the
+`.xcodeproj`** (CocoaPods requires it).
 
-## Setting this up in Xcode
+Once you add the Watch App target below, `ios/` is no longer fully
+described by `app.json` — **never run `expo prebuild --clean`** afterward,
+it will delete your manually-added target. Just edit the Xcode project
+directly from here on, like any bare React Native app.
 
-1. **Generate the native iOS project.** This repo runs Expo in managed
-   workflow — there's no `ios/` folder checked in. From `mobile/`, run:
-   ```
-   npx expo prebuild -p ios
-   ```
-   This creates `mobile/ios/Stride.xcworkspace` and autolinks
-   `modules/stride-watch-connectivity` (it has `expo-module.config.json`, so
-   Expo's autolinking picks it up automatically — no extra config needed).
+## 2. Create the Watch App target
 
-2. **Open the workspace**, not the `.xcodeproj`:
-   ```
-   open mobile/ios/Stride.xcworkspace
-   ```
+With `ios/Stride.xcworkspace` open in Xcode:
 
-3. **Add the Watch App target.** File → New → Target… → watchOS → *App*.
-   - Name it `StrideWatch`.
-   - Interface: SwiftUI. Life Cycle: SwiftUI App.
-   - When prompted for a companion app, choose the existing `Stride` iOS
-     target — this embeds the watch app in the iPhone app's bundle, which is
-     required for `WCSession` pairing to work.
-   - Xcode will suggest a bundle id like `com.gracieudensi.stride.watchkitapp`
-     (must be the phone target's bundle id, `com.gracieudensi.stride`, plus a
-     suffix) — accept it. If Xcode says that identifier isn't available
-     either, your Apple Developer team already has it registered elsewhere,
-     or someone else does — bundle ids are globally unique, so pick another
-     unique suffix/string and keep the phone (`mobile/app.json`) and watch
-     target identifiers matching this same `<phone-id>` + `.watchkitapp`
-     pattern.
+1. **File → New → Target…**
+2. **watchOS** tab → **Watch App** template (the modern single-target
+   template, not the old WatchKit App + Extension split).
+3. In the sheet:
+   - **Product Name:** `Stride Watch App`
+   - **Language:** Swift, **Interface:** SwiftUI
+   - **Minimum Deployment:** watchOS 10.0 (ground contact time / vertical
+     oscillation / running power `HKQuantityType`s need watchOS 9+)
+   - **Include Notification Scene:** unchecked
+   - **Embed in Companion Application:** **Stride** — this makes Xcode
+     derive the companion bundle ID automatically and wires up the
+     WatchConnectivity pairing relationship.
+4. **Finish**, and activate the new scheme when prompted.
 
-4. **Replace the generated boilerplate.** Xcode scaffolds its own
-   `ContentView.swift` / `StrideWatchApp.swift` for the new target — delete
-   those and drag the entire `watch/StrideWatch/` folder from this repo into
-   the new target in the project navigator. Make sure "Copy items if
-   needed" is checked and target membership is set to the watch app target
-   only (not the iOS target).
+## 3. Capabilities on the `Stride Watch App` target
 
-5. **Deployment target.** Set the watch target's deployment target to
-   whatever the current watchOS version is at the time you build (check
-   Xcode's SDK list) — nothing here uses APIs newer than the SwiftUI/
-   WatchConnectivity basics, so it should build against recent watchOS
-   without changes.
+Target → **Signing & Capabilities**:
 
-6. **No extra linking needed for WatchConnectivity** — it's a system
-   framework on both the iOS and watchOS SDKs; `import WatchConnectivity`
-   just works once the files are added to the right targets.
+- **+ Capability → HealthKit**
+- **+ Capability → Background Modes** → check **Workout Processing** (this
+  is what keeps the workout session / location updates alive when the
+  watch screen sleeps — don't request "Always" location, "When In Use"
+  plus an active `HKWorkoutSession` is the correct, sufficient pattern for
+  a workout app).
 
-7. **Build and run.**
-   - Run the `Stride` (iPhone) scheme on a simulator/device.
-   - Run the `StrideWatch Watch App` scheme on a *paired* Watch simulator
-     (Xcode → Window → Devices and Simulators, or just pick a paired
-     iPhone+Watch combo in the scheme's run-destination picker).
-   - Log in on the phone; the watch should flip from "Waiting for Stride…"
-     to the tab view once the first `applicationContext` push lands.
+## 4. Info.plist keys on the `Stride Watch App` target
 
-## Design decisions worth knowing about
+Target → **Info** tab, add:
 
-- **No login UI on the watch.** Typing an email/password on a watch is bad
-  UX and unusual even in shipping apps — the watch shows a "open Stride on
-  your iPhone" status screen until the phone reports `authenticated: true`.
-- **Static reference data is duplicated, not synced.** Arrays like workout
-  history, VO2max trend, and the core-exercise list are hardcoded in
-  `Models.swift` exactly as in `mobile/src/data.js` (the phone app treats
-  them as sample data too). Only genuinely dynamic state travels over
-  WatchConnectivity — no reason to wire up syncing for constants that don't
-  change on either side yet.
-- **`updateApplicationContext` over `sendMessage`** for phone→watch pushes,
-  since it's coalescing (only the latest snapshot matters, no need to queue
-  every intermediate frame of a live workout) and delivers even if the watch
-  app isn't foregrounded. Watch→phone actions use `sendMessage` when
-  reachable, falling back to `transferUserInfo` otherwise.
+| Key | Example value |
+|---|---|
+| `NSLocationWhenInUseUsageDescription` | "Stride uses your location to track pace and route during a run." |
+| `NSHealthShareUsageDescription` | "Stride reads your heart rate and running metrics during workouts." |
+| `NSHealthUpdateUsageDescription` | "Stride saves your completed runs to Health." |
+
+## 5. Add the Swift files
+
+Drag the five files from `watch/StrideWatchApp/` in this repo into the
+**Stride Watch App** group in Xcode (**Stride Watch App target checkbox
+checked**, not the iOS app target):
+
+- `RunPacket.swift` — the data packet sent to the phone
+- `PaceCalculator.swift` — haversine distance + 15s rolling-window pace,
+  same math as the phone's `mobile/src/usePaceTracker.ts`
+- `WorkoutManager.swift` — `HKWorkoutSession` + `HKLiveWorkoutBuilder` +
+  `HKWorkoutRouteBuilder`, `CLLocationManager`, live metric reads, and the
+  WatchConnectivity send (`sendMessage` when reachable, falling back to
+  `updateApplicationContext`)
+- `ContentView.swift` — **replace** the template's auto-generated one, not
+  a duplicate
+- `StrideWatchApp.swift` — reference only; keep whatever Xcode's template
+  actually generated (it'll have a product-name-derived struct name), just
+  make sure it renders `ContentView()`
+
+## 6. Bundle identifier note
+
+`com.stride.app` was already registered to another Apple Developer team,
+so this project uses `com.gracieudensi.stride` (set in `mobile/app.json`)
+for the companion pairing to succeed. If you fork this for your own team,
+you'll need your own unique identifier too.
+
+## 7. Swift language mode
+
+Apple's older delegate-based frameworks used here (`CLLocationManagerDelegate`,
+`HKWorkoutSessionDelegate`, `HKLiveWorkoutBuilderDelegate`, `WCSessionDelegate`)
+don't yet ship `Sendable`/`@MainActor` annotations, which conflicts with
+Swift 6's strict concurrency checker. If you hit "reference to captured var
+'self' in concurrently-executing code" or "does not conform to protocol"
+errors, set the **Stride Watch App** target's Build Settings → **Swift
+Language Mode** to **Swift 5**.
+
+## Known limitation
+
+This has only been built and run in this Xcode/watchOS environment
+directly by you — it was never verified from an automated sandbox (no
+macOS/Xcode/Swift toolchain available there). Treat build errors as
+expected on the first pass in a new environment, and iterate.
