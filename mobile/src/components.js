@@ -42,32 +42,56 @@ export function Chevron({ dir = "right", color = T.sub, size = 12 }) {
   );
 }
 
+// Same two-footprint silhouette used for the app icon (see the icon source's
+// FOOT_PATH) — natural bbox x 22..78, y 4..132, centered at (50, 68).
+const FOOT_PATH =
+  "M 50 4 C 68 4 78 18 78 32 C 78 46 68 54 62 62 C 58 67 58 72 62 78 " +
+  "C 70 88 76 96 76 108 C 76 122 64 132 50 132 C 36 132 24 122 24 108 " +
+  "C 24 96 30 88 38 78 C 42 72 42 67 38 62 C 32 54 22 46 22 32 C 22 18 32 4 50 4 Z";
+const FOOT_SPREAD = 0.065;
+// The icon was rendered on a 1024px canvas at scale 3.1; keep the glyph the
+// same proportion of the frame at any size.
+const FOOT_SCALE = (3.1 / 1024) * 100;
+
 export function RunningLegs({ size = 90, color = T.accent1 }) {
-  const swing = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(swing, { toValue: 1, duration: 320, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
-        Animated.timing(swing, { toValue: 0, duration: 320, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 1, duration: 550, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 0, duration: 550, easing: Easing.inOut(Easing.quad), useNativeDriver: false }),
       ])
     );
     loop.start();
     return () => loop.stop();
-  }, [swing]);
+  }, [pulse]);
 
-  const frontRotation = swing.interpolate({ inputRange: [0, 1], outputRange: [-30, 30] });
-  const backRotation = swing.interpolate({ inputRange: [0, 1], outputRange: [30, -30] });
+  // Alternate which footprint reads as "down" via opacity — no shape-distorting
+  // rotation animation, just the same static two-footprint mark as the icon.
+  const backOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] });
+  const frontOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.55] });
+
+  const scale = (size * FOOT_SCALE) / 100;
+  const gapX = size * FOOT_SPREAD;
+  const gapY = size * FOOT_SPREAD * 0.55;
+  const cx = size / 2;
+  const cy = size / 2;
 
   return (
-    <Svg width={size} height={size} viewBox="0 0 100 100">
-      <AnimatedG origin="50,36" rotation={backRotation}>
-        <Path d="M50 36 L38 68 L30 94 L42 94 L52 68 L56 36 Z" fill={color} opacity={0.5} />
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <AnimatedG
+        transform={`translate(${cx - gapX},${cy + gapY}) rotate(-9) scale(${scale}) translate(-50,-68)`}
+        opacity={backOpacity}
+      >
+        <Path d={FOOT_PATH} fill={color} />
       </AnimatedG>
-      <AnimatedG origin="50,36" rotation={frontRotation}>
-        <Path d="M50 36 L62 68 L70 94 L58 94 L48 68 L44 36 Z" fill={color} />
+      <AnimatedG
+        transform={`translate(${cx + gapX},${cy - gapY}) rotate(9) scale(${scale}) translate(-50,-68)`}
+        opacity={frontOpacity}
+      >
+        <Path d={FOOT_PATH} fill={color} />
       </AnimatedG>
-      <Circle cx="50" cy="22" r="10" fill={color} />
     </Svg>
   );
 }
