@@ -403,27 +403,6 @@ function RunningLegs({ size = 90, color = T.accent1 }) {
   );
 }
 
-function Logomark({ size = 72, radius = 22, fontSize = 32 }) {
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: radius,
-        background: `linear-gradient(135deg, ${T.accent1}, ${T.accent2})`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#fff",
-        fontWeight: 700,
-        fontSize,
-      }}
-    >
-      S
-    </div>
-  );
-}
-
 function BackHeader({ title, onBack }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14, paddingTop: 56 }}>
@@ -658,7 +637,7 @@ function Login({ onSignIn, onSignUp }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 28px", gap: 14 }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginBottom: 14 }}>
         <div style={{ marginBottom: 12 }}>
-          <Logomark size={56} radius={18} fontSize={24} />
+          <RunningLegs size={56} />
         </div>
         <div style={{ fontSize: 20, fontWeight: 700, color: T.ink, whiteSpace: "nowrap" }}>
           {mode === "signin" ? "Welcome back" : "Create your account"}

@@ -25,7 +25,7 @@ import {
   computeACWR,
   confidenceBreakdown,
 } from "./data";
-import { Eyebrow, Chevron, Logomark, RunningLegs, BackHeader, StatCard, ProgressRing, BreathingGuide, CoreExerciseRow, AchievementBadge } from "./components";
+import { Eyebrow, Chevron, RunningLegs, BackHeader, StatCard, ProgressRing, BreathingGuide, CoreExerciseRow, AchievementBadge } from "./components";
 
 /* ───────── Screens ───────── */
 
@@ -84,7 +84,7 @@ export function Login({ onSignIn, onSignUp }) {
     <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 28, gap: 14 }}>
       <View style={{ alignItems: "center", gap: 2, marginBottom: 14 }}>
         <View style={{ marginBottom: 12 }}>
-          <Logomark size={56} radius={18} fontSize={24} />
+          <RunningLegs size={56} />
         </View>
         <Text style={{ fontSize: 20, fontWeight: "700", color: T.ink }}>
           {mode === "signin" ? "Welcome back" : "Create your account"}

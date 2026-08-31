@@ -3,7 +3,6 @@ import { View, Text, Pressable, Animated, Easing } from "react-native";
 import Svg, { Circle, Defs, G, LinearGradient as SvgGradient, Path, Stop } from "react-native-svg";
 
 const AnimatedG = Animated.createAnimatedComponent(G);
-import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { T, card } from "./theme";
 import { hrZoneFor, TIER_STYLE } from "./data";
@@ -40,25 +39,6 @@ export function Chevron({ dir = "right", color = T.sub, size = 12 }) {
         transform: [{ rotate: `${rot}deg` }],
       }}
     />
-  );
-}
-
-export function Logomark({ size = 72, radius = 22, fontSize = 32 }) {
-  return (
-    <LinearGradient
-      colors={[T.accent1, T.accent2]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: radius,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Text style={{ color: "#fff", fontWeight: "700", fontSize }}>S</Text>
-    </LinearGradient>
   );
 }
 
