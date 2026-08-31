@@ -1092,7 +1092,18 @@ const DEVICE_TIERS = [
   },
 ];
 
-export function DevicesScreen({ onBack }) {
+export function DevicesScreen({ onBack, watchPaired, watchConnected }) {
+  const tiers = DEVICE_TIERS.map((d) => {
+    if (d.sources !== "Apple Watch SE / Series 6+") return d;
+    if (watchConnected) {
+      return { ...d, action: "Connected — streaming live", status: "active" };
+    }
+    if (watchPaired) {
+      return { ...d, action: "Paired — open Stride on your watch to start a run", status: "needs-key" };
+    }
+    return d;
+  });
+
   return (
     <View style={{ gap: 16, paddingBottom: 30 }}>
       <BackHeader title="Devices" onBack={onBack} />
@@ -1100,7 +1111,7 @@ export function DevicesScreen({ onBack }) {
         Every metric in this app is only as good as its source. Here's exactly what's powering yours.
       </Text>
 
-      {DEVICE_TIERS.map((d) => (
+      {tiers.map((d) => (
         <View key={d.tier} style={card({ padding: 18, borderLeftWidth: 3, borderLeftColor: d.color })}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <Eyebrow color={d.color}>{d.tier} Tier</Eyebrow>

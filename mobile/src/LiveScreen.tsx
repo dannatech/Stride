@@ -38,6 +38,8 @@ interface LiveScreenProps {
   cadence: number;
   hr: number;
   speedMph: number;
+  watchConnected: boolean;
+  watchMetrics: { groundContactTime: number; verticalOscillation: number; power: number } | null;
   sprintIdx: number;
   laps: number[];
   goalPaceSecPerMile: number;
@@ -68,6 +70,8 @@ export function LiveScreen({
   cadence,
   hr,
   speedMph,
+  watchConnected,
+  watchMetrics,
   sprintIdx,
   laps,
   goalPaceSecPerMile,
@@ -234,6 +238,7 @@ export function LiveScreen({
         <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: isPaused ? T.amber : T.accent1 }} />
         <Text style={{ fontSize: 12, fontWeight: "600", color: T.sub }}>
           {isPaused ? "Paused" : "GPS Tracking"}
+          {watchConnected ? " · ⌚ Watch Connected" : ""}
         </Text>
       </View>
 
@@ -297,6 +302,20 @@ export function LiveScreen({
           <StatCard value={signalLost ? "—" : estimateVO2(speedMph).toFixed(1)} label="Est. VO2 (ml/kg/min)" valueColor={T.accent2} />
         </View>
       </View>
+
+      {watchConnected && watchMetrics && (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+          <View style={{ width: "31%" }}>
+            <StatCard value={`${Math.round(watchMetrics.groundContactTime)} ms`} label="Ground Contact" valueColor={T.accent2} />
+          </View>
+          <View style={{ width: "31%" }}>
+            <StatCard value={`${watchMetrics.verticalOscillation.toFixed(1)} cm`} label="Vert. Oscillation" valueColor={T.accent2} />
+          </View>
+          <View style={{ width: "31%" }}>
+            <StatCard value={`${Math.round(watchMetrics.power)} W`} label="Running Power" valueColor={T.accent2} />
+          </View>
+        </View>
+      )}
 
       <View style={{ alignItems: "center" }}>
         <Text style={{ fontSize: 13, fontWeight: "600", color: T.ink, marginBottom: 10 }}>

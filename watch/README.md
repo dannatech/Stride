@@ -101,9 +101,29 @@ Swift 6's strict concurrency checker. If you hit "reference to captured var
 errors, set the **Stride Watch App** target's Build Settings → **Swift
 Language Mode** to **Swift 5**.
 
+## 8. The phone-side receiver
+
+Unlike the watch target, this half needs **no manual Xcode step** — it's a
+regular autolinked Expo module at `mobile/modules/stride-watch-connectivity/`,
+picked up automatically the next time you run `npx expo prebuild` /
+`npx expo run:ios` (it's already declared as a dependency in
+`mobile/package.json`, so `npm install` symlinks it and autolinking finds
+its podspec).
+
+It's a thin `WCSessionDelegate` (`WatchReceiver.swift`) that receives each
+`RunPacket` the watch sends and forwards it to JS as an `onRunPacket` event.
+On the JS side, `mobile/src/useWatchConnectivity.ts` subscribes to that and
+exposes `{ paired, appInstalled, reachable, lastPacket, connected }` —
+`App.js` uses it to prefer the watch's real HealthKit heart rate over the
+phone's illustrative one, and to show ground contact time / vertical
+oscillation / running power on the Live tab whenever the watch is actively
+streaming. GPS distance/pace and run persistence stay owned by the phone
+(`usePaceTracker`) — the watch only supplies the biometrics the phone can't
+sense on its own.
+
 ## Known limitation
 
-This has only been built and run in this Xcode/watchOS environment
-directly by you — it was never verified from an automated sandbox (no
-macOS/Xcode/Swift toolchain available there). Treat build errors as
-expected on the first pass in a new environment, and iterate.
+The watch target itself has only been built and run in this Xcode/watchOS
+environment directly by you — it was never verified from an automated
+sandbox (no macOS/Xcode/Swift toolchain available there). Treat build
+errors as expected on the first pass in a new environment, and iterate.

@@ -26,6 +26,7 @@ import {
 import { TabBar } from "./src/components";
 import { supabase } from "./src/supabaseClient";
 import { usePaceTracker, simulatedVitals } from "./src/usePaceTracker";
+import { useWatchConnectivity } from "./src/useWatchConnectivity";
 import { LiveScreen } from "./src/LiveScreen";
 import {
   Splash,
@@ -183,8 +184,23 @@ function AppShell() {
   }, []);
 
   const tracker = usePaceTracker(paceSettings.goalPaceSecPerMile, paceSettings.warmupSeconds);
-  const { cadence, hr } = simulatedVitals(tracker.elapsedSeconds);
   const speedMph = tracker.currentPace > 0 ? 3600 / tracker.currentPace : tracker.targetPace > 0 ? 3600 / tracker.targetPace : 0;
+
+  // Apple Watch companion (see watch/StrideWatchApp): the phone stays the
+  // source of truth for GPS distance/pace/session state, but a connected
+  // watch has real HealthKit heart rate + running-dynamics sensors the phone
+  // doesn't, so we prefer its numbers whenever it's actively streaming.
+  const watch = useWatchConnectivity();
+  const { cadence, hr: simulatedHr } = simulatedVitals(tracker.elapsedSeconds);
+  const hr = watch.connected && watch.lastPacket ? watch.lastPacket.heartRate : simulatedHr;
+  const watchMetrics =
+    watch.connected && watch.lastPacket
+      ? {
+          groundContactTime: watch.lastPacket.groundContactTime,
+          verticalOscillation: watch.lastPacket.verticalOscillation,
+          power: watch.lastPacket.power,
+        }
+      : null;
 
   const [sprintIdx, setSprintIdx] = useState(0);
   const [laps, setLaps] = useState([]);
@@ -351,7 +367,11 @@ Context:
   else if (devicesPresented)
     body = (
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
-        <DevicesScreen onBack={() => setDevicesPresented(false)} />
+        <DevicesScreen
+          onBack={() => setDevicesPresented(false)}
+          watchPaired={watch.paired}
+          watchConnected={watch.connected}
+        />
       </ScrollView>
     );
   else
@@ -395,6 +415,8 @@ Context:
               cadence={cadence}
               hr={hr}
               speedMph={speedMph}
+              watchConnected={watch.connected}
+              watchMetrics={watchMetrics}
               sprintIdx={sprintIdx}
               laps={laps}
               goalPaceSecPerMile={paceSettings.goalPaceSecPerMile}
