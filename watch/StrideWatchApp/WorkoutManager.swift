@@ -9,6 +9,7 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
     @Published var isRunning = false
     @Published var isPaused = false
     @Published var elapsedSeconds: TimeInterval = 0
+    @Published var distanceMiles: Double = 0
     @Published var currentPace: Double = 0
     @Published var heartRate: Double = 0
     @Published var groundContactTime: Double = 0
@@ -90,6 +91,8 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
 
             startDate = now
             paceCalculator.reset()
+            distanceMiles = 0
+            currentPace = 0
             isRunning = true
             isPaused = false
 
@@ -147,6 +150,7 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
                 guard let self, let startDate = self.startDate, self.isRunning, !self.isPaused else { return }
                 self.elapsedSeconds = Date().timeIntervalSince(startDate)
                 self.currentPace = self.paceCalculator.currentPace
+                self.distanceMiles = self.paceCalculator.distanceMiles
                 self.sendIfDue()
             }
         }

@@ -13,8 +13,42 @@ enum StrideColor {
     static let amber = Color(red: 0xDB / 255, green: 0xA9 / 255, blue: 0x4A / 255)
 }
 
+private enum RunState {
+    case ready
+    case running
+    case paused
+    case finished
+
+    var title: String {
+        switch self {
+        case .ready: "STRIDE"
+        case .running: "RUNNING"
+        case .paused: "PAUSED"
+        case .finished: "RUN COMPLETE"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .ready: StrideColor.sub
+        case .running: StrideColor.accent1
+        case .paused: StrideColor.amber
+        case .finished: StrideColor.accent2
+        }
+    }
+}
+
 struct ContentView: View {
     @StateObject private var workoutManager = WorkoutManager()
+    // WorkoutManager.stop() resets isRunning/isPaused immediately, but the
+    // "run complete" screen is a UI-only beat before the user taps Done — it
+    // doesn't need to live in WorkoutManager itself.
+    @State private var justFinished = false
+
+    private var runState: RunState {
+        if justFinished { return .finished }
+        return workoutManager.isRunning ? (workoutManager.isPaused ? .paused : .running) : .ready
+    }
 
     var body: some View {
         ZStack {
@@ -22,143 +56,153 @@ struct ContentView: View {
 
             if workoutManager.locationAuthorizationStatus == .denied || workoutManager.locationAuthorizationStatus == .restricted {
                 permissionDeniedView
-            } else if workoutManager.isRunning {
-                activeRunView
             } else {
-                readyView
+                ScrollView {
+                    VStack(spacing: 10) {
+                        Text(runState.title)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(runState.color)
+                            .tracking(1.2)
+
+                        Text(elapsedString)
+                            .font(.system(size: 34, weight: .semibold, design: .rounded))
+                            .foregroundStyle(StrideColor.ink)
+                            .monospacedDigit()
+
+                        if runState == .running || runState == .paused || runState == .finished {
+                            metricsGrid
+                        }
+
+                        if let error = workoutManager.authorizationError, runState == .ready {
+                            Text(error)
+                                .font(.system(size: 10))
+                                .foregroundStyle(StrideColor.red)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 4)
+                        }
+
+                        controls
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                }
             }
         }
     }
 
-    // MARK: Ready (not started)
-
-    private var readyView: some View {
-        VStack(spacing: 10) {
-            Text("READY")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(StrideColor.accent1)
-                .tracking(1.2)
-
-            Text("Start your run")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(StrideColor.ink)
-                .multilineTextAlignment(.center)
-
-            if let error = workoutManager.authorizationError {
-                Text(error)
-                    .font(.system(size: 10))
-                    .foregroundColor(StrideColor.red)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 4)
-            }
-
+    @ViewBuilder
+    private var controls: some View {
+        switch runState {
+        case .ready:
             Button(action: workoutManager.start) {
-                Text("Start")
-                    .font(.system(size: 15, weight: .bold))
+                Label("Start Run", systemImage: "figure.run")
                     .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
             .tint(StrideColor.accent1)
-            .padding(.top, 4)
+
+        case .running:
+            HStack {
+                Button(action: workoutManager.pause) {
+                    Image(systemName: "pause.fill")
+                }
+                .tint(StrideColor.amber)
+
+                Button(action: finishRun) {
+                    Image(systemName: "stop.fill")
+                }
+                .tint(StrideColor.red)
+            }
+
+        case .paused:
+            HStack {
+                Button(action: workoutManager.resume) {
+                    Image(systemName: "play.fill")
+                }
+                .tint(StrideColor.accent1)
+
+                Button(action: finishRun) {
+                    Image(systemName: "stop.fill")
+                }
+                .tint(StrideColor.red)
+            }
+
+        case .finished:
+            Button("Done", action: resetRun)
+                .buttonStyle(.borderedProminent)
+                .tint(StrideColor.accent2)
         }
-        .padding()
     }
 
-    // MARK: Location permission denied
+    private var metricsGrid: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 18) {
+                metric(value: String(format: "%.2f", workoutManager.distanceMiles), label: "MI")
+                metric(value: paceString, label: "PACE")
+            }
+            HStack(spacing: 18) {
+                metric(value: "\(Int(workoutManager.heartRate))", label: "BPM", valueColor: StrideColor.red)
+                metric(value: String(format: "%.0f", workoutManager.power), label: "WATTS", valueColor: StrideColor.accent2)
+            }
+            HStack(spacing: 18) {
+                metric(value: String(format: "%.0f", workoutManager.groundContactTime), label: "GCT MS", valueColor: StrideColor.accent2)
+                metric(value: String(format: "%.1f", workoutManager.verticalOscillation), label: "VO CM", valueColor: StrideColor.accent2)
+            }
+        }
+    }
 
     private var permissionDeniedView: some View {
         VStack(spacing: 8) {
             Text("LOCATION NEEDED")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundColor(StrideColor.red)
+                .foregroundStyle(StrideColor.red)
                 .tracking(1.0)
             Text("Enable location for Stride in Settings on this watch, or on your paired iPhone.")
                 .font(.system(size: 11))
-                .foregroundColor(StrideColor.sub)
+                .foregroundStyle(StrideColor.sub)
                 .multilineTextAlignment(.center)
         }
         .padding()
     }
 
-    // MARK: Active run
-
-    private var activeRunView: some View {
-        ScrollView {
-            VStack(spacing: 10) {
-                statusBanner
-
-                Text(elapsedString)
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundColor(StrideColor.ink)
-                    .monospacedDigit()
-
-                VStack(spacing: 0) {
-                    Text(paceString)
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundColor(StrideColor.accent1)
-                    Text("pace / mi")
-                        .font(.system(size: 9))
-                        .foregroundColor(StrideColor.sub)
-                }
-
-                HStack(spacing: 8) {
-                    metricTile("\(Int(workoutManager.heartRate))", "bpm", StrideColor.red)
-                    metricTile(String(format: "%.0f", workoutManager.power), "watts", StrideColor.accent2)
-                }
-                HStack(spacing: 8) {
-                    metricTile(String(format: "%.0f", workoutManager.groundContactTime), "GCT ms", StrideColor.ink)
-                    metricTile(String(format: "%.1f", workoutManager.verticalOscillation), "VO cm", StrideColor.ink)
-                }
-
-                HStack(spacing: 8) {
-                    Button(workoutManager.isPaused ? "Resume" : "Pause") {
-                        workoutManager.isPaused ? workoutManager.resume() : workoutManager.pause()
-                    }
-                    .tint(StrideColor.amber)
-                    Button("Stop") { workoutManager.stop() }
-                        .tint(StrideColor.red)
-                }
-                .padding(.top, 2)
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
+    private func metric(value: String, label: String, valueColor: Color = StrideColor.ink) -> some View {
+        VStack(spacing: 1) {
+            Text(value)
+                .font(.headline)
+                .foregroundStyle(valueColor)
+                .monospacedDigit()
+            Text(label)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(StrideColor.sub)
         }
-    }
-
-    private var statusBanner: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(workoutManager.isPaused ? StrideColor.amber : StrideColor.accent1)
-                .frame(width: 6, height: 6)
-            Text(workoutManager.isPaused ? "Paused" : "Tracking")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(StrideColor.sub)
-        }
+        .frame(maxWidth: .infinity)
     }
 
     private var elapsedString: String {
-        let total = Int(workoutManager.elapsedSeconds)
-        return String(format: "%02d:%02d", total / 60, total % 60)
+        let totalSeconds = max(0, Int(workoutManager.elapsedSeconds))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 
     private var paceString: String {
         guard workoutManager.currentPace > 0 else { return "—:—" }
-        let total = Int(workoutManager.currentPace.rounded())
-        return String(format: "%d:%02d", total / 60, total % 60)
+        let totalSeconds = Int(workoutManager.currentPace.rounded())
+        return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
     }
 
-    private func metricTile(_ value: String, _ label: String, _ valueColor: Color) -> some View {
-        VStack(spacing: 1) {
-            Text(value)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundColor(valueColor)
-            Text(label)
-                .font(.system(size: 8))
-                .foregroundColor(StrideColor.sub)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-        .background(StrideColor.cardBg)
-        .cornerRadius(10)
+    private func finishRun() {
+        workoutManager.stop()
+        justFinished = true
+    }
+
+    private func resetRun() {
+        justFinished = false
     }
 }
 
