@@ -637,7 +637,7 @@ function Login({ onSignIn, onSignUp }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 28px", gap: 14 }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginBottom: 14 }}>
         <div style={{ marginBottom: 12 }}>
-          <RunningLegs size={56} />
+          <RunningLegs />
         </div>
         <div style={{ fontSize: 20, fontWeight: 700, color: T.ink, whiteSpace: "nowrap" }}>
           {mode === "signin" ? "Welcome back" : "Create your account"}
