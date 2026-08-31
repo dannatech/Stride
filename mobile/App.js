@@ -1,24 +1,50 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { View, ScrollView } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { T } from "./src/theme";
-import { SPRINTS_TODAY, SPRINT_GOAL, CORE_EXERCISES, FALLBACK_AI, phaseFor } from "./src/data";
+import {
+  SPRINT_GOAL,
+  CORE_EXERCISES,
+  CORE_GOAL,
+  FALLBACK_AI,
+  CORE_HISTORY,
+  phaseFor,
+  achievementContext,
+  fmtPace,
+  estimateVO2,
+  deriveHistory,
+  deriveMonthlyHistory,
+  deriveVO2MaxHistory,
+  deriveVO2MaxLabels,
+  deriveStreaks,
+  deriveConfidence,
+  deriveTodayStats,
+  deriveWeekBars,
+} from "./src/data";
 import { TabBar } from "./src/components";
 import { supabase } from "./src/supabaseClient";
-import { sendWatchUpdate, addWatchActionListener } from "./modules/stride-watch-connectivity";
+import { usePaceTracker, simulatedVitals } from "./src/usePaceTracker";
+import { LiveScreen } from "./src/LiveScreen";
 import {
   Splash,
   Login,
   Summary,
-  Live,
   Pace,
   History,
   Coach,
   CycleScreen,
   RecoveryScreen,
   Core,
+  AchievementsScreen,
+  TrainingLoadScreen,
+  FormScreen,
+  DevicesScreen,
 } from "./src/screens";
+
+const PACE_SETTINGS_KEY = "stride.paceSettings.v1";
+const DEFAULT_PACE_SETTINGS = { goalPaceSecPerMile: 480, warmupSeconds: 300 }; // 8:00/mi, 5 min warm-up
 
 function AppShell() {
   const insets = useSafeAreaInsets();
@@ -27,6 +53,10 @@ function AppShell() {
   const [activeTab, setActiveTab] = useState("summary");
   const [cyclePresented, setCyclePresented] = useState(false);
   const [recoveryPresented, setRecoveryPresented] = useState(false);
+  const [achievementsPresented, setAchievementsPresented] = useState(false);
+  const [trainingLoadPresented, setTrainingLoadPresented] = useState(false);
+  const [formPresented, setFormPresented] = useState(false);
+  const [devicesPresented, setDevicesPresented] = useState(false);
 
   // Supabase auth: resolve the current session once, then react to sign-in/out.
   useEffect(() => {
@@ -35,8 +65,13 @@ function AppShell() {
       if (cancelled) return;
       setAuthState(data.session ? "app" : "login");
     });
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
       setAuthState(session ? "app" : "login");
+      if (event === "SIGNED_IN") {
+        onResetRun();
+        setRuns([]);
+        fetchRuns();
+      }
     });
     return () => {
       cancelled = true;
@@ -59,7 +94,29 @@ function AppShell() {
     supabase.auth.signOut();
   }, []);
 
-  const [cycleDay, setCycleDay] = useState(9);
+  // Persisted runs (see supabase/migrations) — fetched per signed-in user, drives
+  // History/Pace/Achievements/Training Load instead of static mock arrays.
+  const [runs, setRuns] = useState([]);
+  const fetchRuns = useCallback(async () => {
+    const { data, error } = await supabase.from("runs").select("*").order("created_at", { ascending: false });
+    if (!error && data) setRuns(data);
+    else if (error) console.error("Failed to load runs:", error);
+  }, []);
+  useEffect(() => {
+    if (authState === "app") fetchRuns();
+  }, [authState, fetchRuns]);
+
+  const history = useMemo(() => deriveHistory(runs), [runs]);
+  const monthlyHistory = useMemo(() => deriveMonthlyHistory(runs), [runs]);
+  const vo2History = useMemo(() => deriveVO2MaxHistory(runs), [runs]);
+  const vo2Labels = useMemo(() => deriveVO2MaxLabels(runs), [runs]);
+  const streaks = useMemo(() => deriveStreaks(runs), [runs]);
+  const confidenceScore = useMemo(() => deriveConfidence(runs), [runs]);
+  const todayStats = useMemo(() => deriveTodayStats(runs), [runs]);
+  const weekBars = useMemo(() => deriveWeekBars(runs), [runs]);
+  const latestRun = history[0];
+
+  const [cycleDay, setCycleDay] = useState(1);
   const cycleLength = 28;
   const periodLength = 5;
 
@@ -72,7 +129,7 @@ function AppShell() {
   }, [recovery]);
 
   // core exercise tracking
-  const [coreToday, setCoreToday] = useState({ situps: 15, twists: 10 });
+  const [coreToday, setCoreToday] = useState({});
   const [holdingId, setHoldingId] = useState(null);
   const [holdElapsed, setHoldElapsed] = useState(0);
   const [coreHr, setCoreHr] = useState(96);
@@ -104,40 +161,89 @@ function AppShell() {
     [holdElapsed]
   );
 
-  // live session simulation
-  const [session, setSession] = useState({
-    elapsed: 754,
-    pace: 415,
-    speed: 8.6,
-    cadence: 172,
-    hr: 158,
-    laps: [],
-    sprintIdx: 6,
-  });
+  // Real GPS-tracked live run (see src/usePaceTracker). Lifted to AppShell — not the
+  // Live screen itself — so tracking keeps running if the user switches tabs mid-run.
+  const [paceSettings, setPaceSettings] = useState(DEFAULT_PACE_SETTINGS);
   useEffect(() => {
-    if (authState !== "app") return;
-    const id = setInterval(() => {
-      setSession((s) => {
-        const t = s.elapsed + 1;
-        return {
-          ...s,
-          elapsed: t,
-          pace: 415 + Math.sin(t / 9) * 28,
-          speed: 8.6 + Math.sin(t / 7) * 1.4,
-          cadence: 172 + Math.sin(t / 11) * 6,
-          hr: 158 + Math.sin(t / 13) * 9,
-        };
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [authState]);
-  const onLap = useCallback(() => {
-    setSession((s) => ({
-      ...s,
-      laps: [...s.laps, 380 + Math.random() * 70],
-      sprintIdx: Math.min(SPRINT_GOAL, s.sprintIdx + 1),
-    }));
+    AsyncStorage.getItem(PACE_SETTINGS_KEY).then((raw) => {
+      if (!raw) return;
+      try {
+        setPaceSettings((s) => ({ ...s, ...JSON.parse(raw) }));
+      } catch {
+        // ignore corrupt settings, keep defaults
+      }
+    });
   }, []);
+  const updatePaceSettings = useCallback((patch) => {
+    setPaceSettings((s) => {
+      const next = { ...s, ...patch };
+      AsyncStorage.setItem(PACE_SETTINGS_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const tracker = usePaceTracker(paceSettings.goalPaceSecPerMile, paceSettings.warmupSeconds);
+  const { cadence, hr } = simulatedVitals(tracker.elapsedSeconds);
+  const speedMph = tracker.currentPace > 0 ? 3600 / tracker.currentPace : tracker.targetPace > 0 ? 3600 / tracker.targetPace : 0;
+
+  const [sprintIdx, setSprintIdx] = useState(0);
+  const [laps, setLaps] = useState([]);
+  // Minute-by-minute pace samples + sprint-effort minute flags, captured live so a
+  // completed run can persist real Pace-screen splits instead of nothing.
+  const minuteLogRef = useRef([]);
+  const sprintMinutesRef = useRef(new Set());
+  useEffect(() => {
+    const t = tracker.elapsedSeconds;
+    if (t > 0 && t % 60 === 0 && minuteLogRef.current.length < t / 60) {
+      minuteLogRef.current.push(Math.round(tracker.currentPace || tracker.targetPace));
+    }
+  }, [tracker.elapsedSeconds]);
+  const onLap = useCallback(() => {
+    setLaps((l) => [...l, tracker.currentPace || tracker.targetPace]);
+    setSprintIdx((i) => Math.min(SPRINT_GOAL, i + 1));
+    sprintMinutesRef.current.add(Math.floor(tracker.elapsedSeconds / 60));
+  }, [tracker.currentPace, tracker.targetPace, tracker.elapsedSeconds]);
+  const onResetRun = useCallback(() => {
+    minuteLogRef.current = [];
+    sprintMinutesRef.current = new Set();
+    setSprintIdx(0);
+    setLaps([]);
+    tracker.reset();
+  }, [tracker]);
+
+  const [rpeLog, setRpeLog] = useState([]);
+  const onEndWorkout = useCallback(
+    async (rpe) => {
+      const finalHr = Math.round(hr);
+      if (rpe != null) {
+        setRpeLog((log) => [{ rpe, hr: finalHr }, ...log].slice(0, 10));
+      }
+      const distanceMi = Math.round(tracker.distanceMiles * 100) / 100;
+      if (tracker.elapsedSeconds > 0 && distanceMi > 0) {
+        const { data, error } = await supabase
+          .from("runs")
+          .insert({
+            distance_mi: distanceMi,
+            duration_sec: tracker.elapsedSeconds,
+            avg_pace_sec: Math.round(tracker.elapsedSeconds / distanceMi),
+            sprints: sprintIdx,
+            avg_hr: finalHr,
+            avg_cadence: Math.round(cadence),
+            rpe: rpe ?? null,
+            vo2max: Math.round(estimateVO2(speedMph) * 10) / 10,
+            pace_minutes: minuteLogRef.current,
+            sprint_minutes: Array.from(sprintMinutesRef.current),
+          })
+          .select()
+          .single();
+        if (!error && data) setRuns((r) => [data, ...r]);
+        else if (error) console.error("Failed to save run:", error);
+      }
+      onResetRun();
+      setActiveTab("summary");
+    },
+    [tracker, sprintIdx, cadence, hr, speedMph, onResetRun]
+  );
 
   // AI: single call returning all outputs
   const [ai, setAi] = useState(FALLBACK_AI);
@@ -145,31 +251,32 @@ function AppShell() {
   const fetchAi = useCallback(async () => {
     setAiLoading(true);
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [
-            {
-              role: "user",
-              content: `You are the AI coach inside "Stride", a sprint, core-strength, and running app. Given this athlete context, respond with ONLY strict JSON (no markdown fences, no preamble) matching exactly this shape:
+      const runsContext =
+        history.length > 0
+          ? `Recent runs (newest first, avg pace): ${history.map((w) => fmtPace(w.pace)).join(", ")}.`
+          : "This athlete has no logged runs yet — they're brand new to the app.";
+      const coreContext =
+        CORE_HISTORY.length > 0
+          ? `Recent core sessions completed: ${CORE_HISTORY.map((h) => `${h.completed}/${CORE_GOAL}`).join(", ")}.`
+          : "No core sessions logged yet.";
+      const vo2Context =
+        vo2History.length > 0
+          ? `VO2max estimate trend (ml/kg/min): ${vo2History.join(", ")}.`
+          : "No VO2max estimate yet — not enough runs logged.";
+
+      const prompt = `You are the AI coach inside "Stride", a sprint, core-strength, and running app. Given this athlete context, respond with ONLY strict JSON (no markdown fences, no preamble) matching exactly this shape:
 {"postWorkoutInsight": string, "weeklyNarrative": string, "liveCues": string[5], "cycleTip": string, "coreInsight": string, "vo2maxNote": string, "weeklyPlan": [{"day": "Mon".."Sun", "focus": string, "intensity": 0|1|2|3}] (7 entries)}
 
 Context:
-- Today's workout: 8 sprints, 3.2 mi, avg pace 6:52/mi, fastest minute was minute 7 at 6:28/mi.
-- Recent runs (newest first, avg pace): 6:52, 7:05, 6:58, 7:16, 7:11, 7:27 — improving trend.
+- ${runsContext}
 - Menstrual cycle: day ${cycleDay} of ${cycleLength} (${phaseFor(cycleDay)} phase). Make cycleTip phase-aware.
-- Core session today: 4 of 6 exercises complete; plank hold 48s (target 60s), up from 40s last session.
-- VO2max estimate trend over 6 weeks (ml/kg/min): 44.8, 45.3, 45.9, 46.4, 46.9, 47.5, 47.9 — steadily improving.
+- ${coreContext}
+- ${vo2Context}
 - Breathing technique is HR-zone based (box breathing at rest up through 1:1 breathing near max effort); reference it only if natural.
-- postWorkoutInsight: 1–2 sentences referencing a specific minute. weeklyNarrative: 1–2 sentences on the trend. liveCues: 5 short motivational mid-sprint voice cues. coreInsight: 1–2 sentences on today's core session and a concrete target for next time. vo2maxNote: 1–2 sentences on the VO2max trend and what it signals. weeklyPlan focus: short (≤5 words).`,
-            },
-          ],
-        }),
-      });
-      const data = await response.json();
+- If there's no history yet, keep postWorkoutInsight/weeklyNarrative/coreInsight/vo2maxNote short, welcoming, and forward-looking (what they'll see once they log a workout) rather than inventing numbers. Otherwise: postWorkoutInsight 1–2 sentences referencing a specific run, weeklyNarrative 1–2 sentences on the trend, coreInsight 1–2 sentences with a concrete target, vo2maxNote 1–2 sentences on the trend. liveCues: 5 short motivational mid-sprint voice cues (always). weeklyPlan: a beginner-friendly first week if no history, otherwise tailored to their trend; focus text short (≤5 words).`;
+
+      const { data, error } = await supabase.functions.invoke("ai-coach", { body: { prompt } });
+      if (error) throw error;
       const text = (data.content || [])
         .filter((b) => b.type === "text")
         .map((b) => b.text)
@@ -182,70 +289,13 @@ Context:
     } finally {
       setAiLoading(false);
     }
-  }, [cycleDay]);
+  }, [cycleDay, history, vo2History]);
   useEffect(() => {
     if (authState === "app") fetchAi();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authState]);
 
   const cues = aiLoading ? FALLBACK_AI.liveCues : ai.liveCues;
-
-  // Push the current state snapshot to the paired Apple Watch app whenever
-  // anything it displays changes. The watch has no server access of its
-  // own — it's a thin client mirroring whatever the phone sends it.
-  useEffect(() => {
-    sendWatchUpdate({
-      authenticated: authState === "app",
-      readiness,
-      cycleDay,
-      cycleLength,
-      periodLength,
-      sprintsToday: SPRINTS_TODAY,
-      coreToday,
-      session,
-      ai: aiLoading ? FALLBACK_AI : ai,
-    });
-  }, [authState, readiness, cycleDay, cycleLength, periodLength, coreToday, session, ai, aiLoading]);
-
-  // Actions performed on the watch (Lap, log reps, log period, etc.) arrive
-  // here and are routed through the same handlers the phone UI uses, so
-  // state stays consistent regardless of which device triggered the change.
-  useEffect(() => {
-    const unsubscribe = addWatchActionListener(({ action, params }) => {
-      switch (action) {
-        case "lap":
-          onLap();
-          break;
-        case "logReps":
-          setCoreToday((c) => ({ ...c, [params.id]: params.value }));
-          break;
-        case "startHold":
-          onStartHold(params.id);
-          break;
-        case "stopHold":
-          setCoreToday((c) => ({ ...c, [params.id]: params.value }));
-          setHoldingId(null);
-          setCoreHr(96);
-          break;
-        case "logPeriod":
-          setCycleDay(1);
-          break;
-        case "advanceDay":
-          setCycleDay((d) => (d % cycleLength) + 1);
-          break;
-        case "setSoreness":
-          setRecovery((r) => ({ ...r, soreness: params.value }));
-          break;
-        case "toggleStretch":
-          setRecovery((r) => ({ ...r, stretchDone: params.value }));
-          break;
-        default:
-          break;
-      }
-    });
-    return unsubscribe;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cycleLength]);
 
   let body;
   if (authState === "splash") body = <Splash />;
@@ -271,6 +321,39 @@ Context:
         <RecoveryScreen recovery={recovery} setRecovery={setRecovery} readiness={readiness} onBack={() => setRecoveryPresented(false)} />
       </ScrollView>
     );
+  else if (achievementsPresented)
+    body = (
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
+        <AchievementsScreen
+          ctx={achievementContext({ readiness, coreCompleted, history, streaks, confidence: confidenceScore })}
+          onBack={() => setAchievementsPresented(false)}
+        />
+      </ScrollView>
+    );
+  else if (trainingLoadPresented)
+    body = (
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
+        <TrainingLoadScreen
+          readiness={readiness}
+          rpeLog={rpeLog}
+          history={history}
+          confidenceScore={confidenceScore}
+          onBack={() => setTrainingLoadPresented(false)}
+        />
+      </ScrollView>
+    );
+  else if (formPresented)
+    body = (
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
+        <FormScreen session={{ cadence, hr }} onBack={() => setFormPresented(false)} />
+      </ScrollView>
+    );
+  else if (devicesPresented)
+    body = (
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
+        <DevicesScreen onBack={() => setDevicesPresented(false)} />
+      </ScrollView>
+    );
   else
     body = (
       <>
@@ -285,10 +368,48 @@ Context:
               cycleLength={cycleLength}
               openCycle={() => setCyclePresented(true)}
               openRecovery={() => setRecoveryPresented(true)}
+              openAchievements={() => setAchievementsPresented(true)}
+              openTrainingLoad={() => setTrainingLoadPresented(true)}
+              openForm={() => setFormPresented(true)}
+              openDevices={() => setDevicesPresented(true)}
+              achievementCtx={achievementContext({ readiness, coreCompleted, history, streaks, confidence: confidenceScore })}
+              history={history}
+              todayStats={todayStats}
+              weekBars={weekBars}
               onSignOut={onSignOut}
             />
           )}
-          {activeTab === "live" && <Live session={session} onLap={onLap} cues={cues} />}
+          {activeTab === "live" && (
+            <LiveScreen
+              cues={cues}
+              elapsedSeconds={tracker.elapsedSeconds}
+              distanceMiles={tracker.distanceMiles}
+              currentPace={tracker.currentPace}
+              targetPace={tracker.targetPace}
+              diffSecondsPerMile={tracker.diffSecondsPerMile}
+              status={tracker.status}
+              signalLost={tracker.signalLost}
+              permissionStatus={tracker.permissionStatus}
+              isTracking={tracker.isTracking}
+              isPaused={tracker.isPaused}
+              cadence={cadence}
+              hr={hr}
+              speedMph={speedMph}
+              sprintIdx={sprintIdx}
+              laps={laps}
+              goalPaceSecPerMile={paceSettings.goalPaceSecPerMile}
+              warmupSeconds={paceSettings.warmupSeconds}
+              onChangeGoalPace={(v) => updatePaceSettings({ goalPaceSecPerMile: v })}
+              onChangeWarmup={(v) => updatePaceSettings({ warmupSeconds: v })}
+              onStart={tracker.start}
+              onPause={tracker.pause}
+              onResume={tracker.resume}
+              onReset={onResetRun}
+              onRequestPermission={tracker.requestPermission}
+              onLap={onLap}
+              onEndWorkout={onEndWorkout}
+            />
+          )}
           {activeTab === "core" && (
             <Core
               coreToday={coreToday}
@@ -301,8 +422,15 @@ Context:
               onStopHold={onStopHold}
             />
           )}
-          {activeTab === "pace" && <Pace />}
-          {activeTab === "history" && <History />}
+          {activeTab === "pace" && (
+            <Pace
+              paceMinutes={latestRun?.paceMinutes || []}
+              sprintMinutes={latestRun?.sprintMinutes || new Set()}
+              vo2History={vo2History}
+              vo2Labels={vo2Labels}
+            />
+          )}
+          {activeTab === "history" && <History history={history} monthlyHistory={monthlyHistory} />}
           {activeTab === "coach" && <Coach ai={ai} aiLoading={aiLoading} />}
         </ScrollView>
         <TabBar active={activeTab} setActive={setActiveTab} bottomInset={insets.bottom} />

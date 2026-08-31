@@ -13,14 +13,28 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#111214",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "package": "com.gracieudensi.stride"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Stride uses your location to track pace and distance during a run."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "65d951ce-aa7f-4256-8f98-3909a23abdea"
+      }
     }
   }
 }
