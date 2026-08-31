@@ -16,6 +16,7 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
     @Published var strideLength: Double = 0
     @Published var power: Double = 0
     @Published var authorizationError: String?
+    @Published var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
 
     private let healthStore = HKHealthStore()
     private let locationManager = CLLocationManager()
@@ -43,6 +44,7 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = 3
         locationManager.activityType = .fitness
+        locationAuthorizationStatus = locationManager.authorizationStatus
 
         if WCSession.isSupported() {
             WCSession.default.delegate = self
@@ -192,6 +194,11 @@ extension WorkoutManager: CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Task { @MainActor in self.authorizationError = error.localizedDescription }
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        Task { @MainActor in self.locationAuthorizationStatus = status }
     }
 }
 
