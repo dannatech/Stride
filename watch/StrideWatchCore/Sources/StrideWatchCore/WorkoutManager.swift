@@ -33,6 +33,11 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
     private var liveBuilder: HKLiveWorkoutBuilder?
     private var routeBuilder: HKWorkoutRouteBuilder?
     private var lastCoordinate: CLLocationCoordinate2D?
+    // Only call finishRoute if at least one location was actually inserted —
+    // calling it with zero route data is what triggers the "no data was added
+    // to the workout route" failure (an app-level error before, but this also
+    // avoids whatever the OS itself does with that failure internally).
+    private var hasRouteData = false
 
     private var startDate: Date?
     private var elapsedTimer: Timer?
@@ -93,6 +98,7 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
             paceCalculator.reset()
             distanceMiles = 0
             currentPace = 0
+            hasRouteData = false
             isRunning = true
             isPaused = false
 
@@ -123,18 +129,16 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
         locationManager.stopUpdatingLocation()
 
         guard let session = workoutSession, let builder = liveBuilder else { return }
-        let routeBuilderToFinish = routeBuilder // capture before clearing below
+        // Capture before clearing below; only actually finish the route if we
+        // ever inserted a location into it — finishing an empty route is what
+        // produces the "no data was added to the workout route" failure.
+        let routeBuilderToFinish = hasRouteData ? routeBuilder : nil
 
         session.end()
-        builder.endCollection(withEnd: Date()) { [weak self] _, _ in
+        builder.endCollection(withEnd: Date()) { _, _ in
             builder.finishWorkout { workout, _ in
-                guard let workout else { return }
-                routeBuilderToFinish?.finishRoute(with: workout, metadata: nil) { _, _ in
-                    // Intentionally not surfaced to authorizationError: this fails
-                    // benignly whenever the run ends before a GPS fix ever arrived
-                    // (e.g. a short test, or starting indoors) — the workout itself
-                    // still saves to Health either way, just without a route.
-                }
+                guard let workout, let routeBuilderToFinish else { return }
+                routeBuilderToFinish.finishRoute(with: workout, metadata: nil) { _, _ in }
             }
         }
 
@@ -192,7 +196,9 @@ extension WorkoutManager: CLLocationManagerDelegate {
         Task { @MainActor in
             self.lastCoordinate = location.coordinate
             self.paceCalculator.ingest(location)
-            self.routeBuilder?.insertRouteData([location]) { _, _ in }
+            self.routeBuilder?.insertRouteData([location]) { success, _ in
+                if success { Task { @MainActor in self.hasRouteData = true } }
+            }
         }
     }
 
