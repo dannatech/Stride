@@ -215,6 +215,10 @@ struct ContentView: View {
 
     private func resetRun() {
         justFinished = false
+        // stop() intentionally leaves elapsedSeconds at its final value so the
+        // "run complete" screen can show it — clear it now that we're heading
+        // back to the ready screen, or it'd sit there stale until next tick.
+        workoutManager.elapsedSeconds = 0
     }
 }
 
