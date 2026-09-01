@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreLocation
+import StrideWatchCore
 
 // Same palette as the phone app's src/theme.js / mobile/src/theme.js.
 enum StrideColor {

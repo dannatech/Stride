@@ -1,29 +1,31 @@
 import CoreLocation
 
-// Direct port of the phone's usePaceTracker.ts pace math — same haversine
-// distance, same 15s rolling window, same accuracy/jump guards — so pace
-// behaves identically whether it's computed on the watch or the phone.
-final class PaceCalculator {
+/// Direct port of the phone's usePaceTracker.ts pace math — same haversine
+/// distance, same 15s rolling window, same accuracy/jump guards — so pace
+/// behaves identically whether it's computed on the watch or the phone.
+public final class PaceCalculator {
     private struct Sample { let t: TimeInterval; let cumDistMiles: Double }
 
     private let rollingWindowSeconds: TimeInterval = 15
     private let minAccuracyMeters: Double = 30
     private let maxPlausibleSegmentMiles: Double = 0.5
 
-    private(set) var distanceMiles: Double = 0
-    private(set) var currentPace: Double = 0 // seconds per mile
+    public private(set) var distanceMiles: Double = 0
+    public private(set) var currentPace: Double = 0 // seconds per mile
 
     private var lastLocation: CLLocation?
     private var samples: [Sample] = []
 
-    func reset() {
+    public init() {}
+
+    public func reset() {
         distanceMiles = 0
         currentPace = 0
         lastLocation = nil
         samples = []
     }
 
-    func ingest(_ location: CLLocation) {
+    public func ingest(_ location: CLLocation) {
         guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= minAccuracyMeters else { return }
         defer { lastLocation = location }
         guard let prev = lastLocation else { return }

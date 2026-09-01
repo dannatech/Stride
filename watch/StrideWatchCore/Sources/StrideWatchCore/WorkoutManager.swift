@@ -5,19 +5,19 @@ import HealthKit
 import WatchConnectivity
 
 @MainActor
-final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
-    @Published var isRunning = false
-    @Published var isPaused = false
-    @Published var elapsedSeconds: TimeInterval = 0
-    @Published var distanceMiles: Double = 0
-    @Published var currentPace: Double = 0
-    @Published var heartRate: Double = 0
-    @Published var groundContactTime: Double = 0
-    @Published var verticalOscillation: Double = 0
-    @Published var strideLength: Double = 0
-    @Published var power: Double = 0
-    @Published var authorizationError: String?
-    @Published var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
+public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
+    @Published public var isRunning = false
+    @Published public var isPaused = false
+    @Published public var elapsedSeconds: TimeInterval = 0
+    @Published public var distanceMiles: Double = 0
+    @Published public var currentPace: Double = 0
+    @Published public var heartRate: Double = 0
+    @Published public var groundContactTime: Double = 0
+    @Published public var verticalOscillation: Double = 0
+    @Published public var strideLength: Double = 0
+    @Published public var power: Double = 0
+    @Published public var authorizationError: String?
+    @Published public var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
 
     private let healthStore = HKHealthStore()
     private let locationManager = CLLocationManager()
@@ -39,7 +39,7 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
     private var lastSendDate: Date = .distantPast
     private let sendInterval: TimeInterval = 2
 
-    override init() {
+    public override init() {
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
@@ -64,7 +64,7 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
 
-    func start() {
+    public func start() {
         requestAuthorization()
 
         let configuration = HKWorkoutConfiguration()
@@ -104,19 +104,19 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
 
-    func pause() {
+    public func pause() {
         isPaused = true
         locationManager.stopUpdatingLocation()
         elapsedTimer?.invalidate()
     }
 
-    func resume() {
+    public func resume() {
         isPaused = false
         locationManager.startUpdatingLocation()
         startElapsedTimer()
     }
 
-    func stop() {
+    public func stop() {
         isRunning = false
         isPaused = false
         elapsedTimer?.invalidate()
@@ -187,7 +187,7 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
 }
 
 extension WorkoutManager: CLLocationManagerDelegate {
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    nonisolated public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         Task { @MainActor in
             self.lastCoordinate = location.coordinate
@@ -196,25 +196,25 @@ extension WorkoutManager: CLLocationManagerDelegate {
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    nonisolated public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Task { @MainActor in self.authorizationError = error.localizedDescription }
     }
 
-    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    nonisolated public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
         Task { @MainActor in self.locationAuthorizationStatus = status }
     }
 }
 
 extension WorkoutManager: HKWorkoutSessionDelegate {
-    nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didChangeTo toState: HKWorkoutSessionState, from fromState: HKWorkoutSessionState, date: Date) {}
-    nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
+    nonisolated public func workoutSession(_ workoutSession: HKWorkoutSession, didChangeTo toState: HKWorkoutSessionState, from fromState: HKWorkoutSessionState, date: Date) {}
+    nonisolated public func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
         Task { @MainActor in self.authorizationError = error.localizedDescription }
     }
 }
 
 extension WorkoutManager: HKLiveWorkoutBuilderDelegate {
-    nonisolated func workoutBuilder(_ workoutBuilder: HKLiveWorkoutBuilder, didCollectDataOf collectedTypes: Set<HKSampleType>) {
+    nonisolated public func workoutBuilder(_ workoutBuilder: HKLiveWorkoutBuilder, didCollectDataOf collectedTypes: Set<HKSampleType>) {
         for type in collectedTypes {
             guard let quantityType = type as? HKQuantityType,
                   let statistics = workoutBuilder.statistics(for: quantityType) else { continue }
@@ -238,9 +238,9 @@ extension WorkoutManager: HKLiveWorkoutBuilderDelegate {
         }
     }
 
-    nonisolated func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {}
+    nonisolated public func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {}
 }
 
 extension WorkoutManager: WCSessionDelegate {
-    nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
+    nonisolated public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
 }
