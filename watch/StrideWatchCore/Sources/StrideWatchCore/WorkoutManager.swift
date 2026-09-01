@@ -129,11 +129,11 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
         builder.endCollection(withEnd: Date()) { [weak self] _, _ in
             builder.finishWorkout { workout, _ in
                 guard let workout else { return }
-                routeBuilderToFinish?.finishRoute(with: workout, metadata: nil) { _, error in
-                    guard let error else { return }
-                    Task { @MainActor in
-                        self?.authorizationError = error.localizedDescription
-                    }
+                routeBuilderToFinish?.finishRoute(with: workout, metadata: nil) { _, _ in
+                    // Intentionally not surfaced to authorizationError: this fails
+                    // benignly whenever the run ends before a GPS fix ever arrived
+                    // (e.g. a short test, or starting indoors) — the workout itself
+                    // still saves to Health either way, just without a route.
                 }
             }
         }
