@@ -6,6 +6,17 @@ export const SPRINT_GOAL = 10;
 export const TODAY_IDX = new Date().getDay(); // 0=Sun..6=Sat
 export const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
+/* ───────── workout types — picked before starting a Live session ───────── */
+
+// Each type's goalPaceSecPerMile/warmupSeconds are just the defaults applied
+// when switching to that type; the user can still fine-tune both afterward.
+export const WORKOUT_TYPES = {
+  run: { label: "Run", verb: "Run", goalPaceSecPerMile: 480, warmupSeconds: 300 }, // 8:00/mi, 5 min warm-up
+  walk: { label: "Walk", verb: "Walk", goalPaceSecPerMile: 900, warmupSeconds: 60 }, // 15:00/mi, 1 min warm-up
+  sprint: { label: "Sprint", verb: "Sprint", goalPaceSecPerMile: 360, warmupSeconds: 0 }, // 6:00/mi, no ramp-up
+};
+export const WORKOUT_TYPE_ORDER = ["run", "walk", "sprint"];
+
 export const MAX_HR = 190; // ≈ 220 - age(30), used for HR-zone breathing guidance
 
 export const HR_ZONES = [

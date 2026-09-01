@@ -22,6 +22,7 @@ import {
   deriveConfidence,
   deriveTodayStats,
   deriveWeekBars,
+  WORKOUT_TYPES,
 } from "./src/data";
 import { TabBar } from "./src/components";
 import { supabase } from "./src/supabaseClient";
@@ -45,7 +46,11 @@ import {
 } from "./src/screens";
 
 const PACE_SETTINGS_KEY = "stride.paceSettings.v1";
-const DEFAULT_PACE_SETTINGS = { goalPaceSecPerMile: 480, warmupSeconds: 300 }; // 8:00/mi, 5 min warm-up
+const DEFAULT_PACE_SETTINGS = {
+  workoutType: "run",
+  goalPaceSecPerMile: WORKOUT_TYPES.run.goalPaceSecPerMile,
+  warmupSeconds: WORKOUT_TYPES.run.warmupSeconds,
+};
 
 function AppShell() {
   const insets = useSafeAreaInsets();
@@ -182,6 +187,15 @@ function AppShell() {
       return next;
     });
   }, []);
+  // Switching type resets pace/warm-up to that type's defaults; the user can
+  // still fine-tune both afterward with the existing +/- steppers.
+  const onChangeWorkoutType = useCallback(
+    (type) => {
+      const preset = WORKOUT_TYPES[type];
+      updatePaceSettings({ workoutType: type, goalPaceSecPerMile: preset.goalPaceSecPerMile, warmupSeconds: preset.warmupSeconds });
+    },
+    [updatePaceSettings]
+  );
 
   const tracker = usePaceTracker(paceSettings.goalPaceSecPerMile, paceSettings.warmupSeconds);
   const speedMph = tracker.currentPace > 0 ? 3600 / tracker.currentPace : tracker.targetPace > 0 ? 3600 / tracker.targetPace : 0;
@@ -419,8 +433,10 @@ Context:
               watchMetrics={watchMetrics}
               sprintIdx={sprintIdx}
               laps={laps}
+              workoutType={paceSettings.workoutType}
               goalPaceSecPerMile={paceSettings.goalPaceSecPerMile}
               warmupSeconds={paceSettings.warmupSeconds}
+              onChangeWorkoutType={onChangeWorkoutType}
               onChangeGoalPace={(v) => updatePaceSettings({ goalPaceSecPerMile: v })}
               onChangeWarmup={(v) => updatePaceSettings({ warmupSeconds: v })}
               onStart={tracker.start}
