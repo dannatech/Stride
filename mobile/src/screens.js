@@ -24,6 +24,8 @@ import {
   estimateTSS,
   computeACWR,
   confidenceBreakdown,
+  WORKOUT_TYPES,
+  WORKOUT_TYPE_ORDER,
 } from "./data";
 import { Eyebrow, Chevron, RunningLegs, BackHeader, StatCard, ProgressRing, BreathingGuide, CoreExerciseRow, AchievementBadge } from "./components";
 
@@ -302,7 +304,38 @@ export function Summary({
   );
 }
 
-export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels }) {
+// Shared by Pace and History — scopes their trend charts to one workout type
+// at a time, since a walk's pace/VO2 sitting in a running trend just reads
+// as a meaningless outlier.
+function TrendTypePicker({ trendType, onChangeTrendType }) {
+  return (
+    <View style={{ flexDirection: "row", gap: 8 }}>
+      {WORKOUT_TYPE_ORDER.map((type) => {
+        const active = type === trendType;
+        return (
+          <Pressable
+            key={type}
+            onPress={() => onChangeTrendType(type)}
+            style={{
+              paddingVertical: 7,
+              paddingHorizontal: 16,
+              borderRadius: 999,
+              backgroundColor: active ? T.accent1 : "transparent",
+              borderWidth: active ? 0 : 1.5,
+              borderColor: T.hair,
+            }}
+          >
+            <Text style={{ color: active ? "#fff" : T.sub, fontWeight: "700", fontSize: 12 }}>
+              {WORKOUT_TYPES[type].label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels, trendType, onChangeTrendType }) {
   const hasPace = paceMinutes.length > 0;
   const hasVO2 = vo2History.length > 0;
   const avg = hasPace ? paceMinutes.reduce((a, b) => a + b, 0) / paceMinutes.length : 0;
@@ -314,6 +347,7 @@ export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels }) {
   const vo2Max = hasVO2 ? Math.max(...vo2History) : 0;
   return (
     <View style={{ gap: 16 }}>
+      <TrendTypePicker trendType={trendType} onChangeTrendType={onChangeTrendType} />
       <View>
         <Text style={{ fontSize: 13, color: T.sub }}>Average Pace</Text>
         <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
@@ -357,7 +391,9 @@ export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels }) {
             })}
           </View>
         ) : (
-          <Text style={{ fontSize: 12, color: T.sub, marginTop: 12 }}>Not enough runs yet to estimate VO2max.</Text>
+          <Text style={{ fontSize: 12, color: T.sub, marginTop: 12 }}>
+            Not enough {WORKOUT_TYPES[trendType].label.toLowerCase()}s logged yet to estimate VO2max.
+          </Text>
         )}
       </View>
 
@@ -407,7 +443,7 @@ export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels }) {
       ) : (
         <View style={card({ padding: 16 })}>
           <Text style={{ fontSize: 13, color: T.sub, textAlign: "center" }}>
-            No pace data yet — complete a run to see your minute-by-minute splits here.
+            No pace data yet — complete a {WORKOUT_TYPES[trendType].label.toLowerCase()} to see your minute-by-minute splits here.
           </Text>
         </View>
       )}
@@ -415,8 +451,9 @@ export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels }) {
   );
 }
 
-export function History({ history, monthlyHistory }) {
+export function History({ history, monthlyHistory, trendType, onChangeTrendType }) {
   const [range, setRange] = useState("Weekly");
+  const typeLabel = WORKOUT_TYPES[trendType].label.toLowerCase();
   const deltas = history.slice(0, -1).map((w, i) => ({
     date: w.date,
     delta: w.pace - history[i + 1].pace,
@@ -429,12 +466,14 @@ export function History({ history, monthlyHistory }) {
         <Text style={{ fontSize: 13, color: T.sub }}>Recent workouts</Text>
       </View>
 
+      <TrendTypePicker trendType={trendType} onChangeTrendType={onChangeTrendType} />
+
       <View style={card({ padding: 16 })}>
         <Text style={{ fontSize: 14, fontWeight: "700", color: T.ink }}>Pace Change, Day to Day</Text>
-        <Text style={{ fontSize: 11, color: T.sub, marginBottom: 16 }}>vs. the previous run · faster ↑ slower ↓</Text>
+        <Text style={{ fontSize: 11, color: T.sub, marginBottom: 16 }}>vs. the previous {typeLabel} · faster ↑ slower ↓</Text>
         {deltas.length === 0 ? (
           <Text style={{ fontSize: 13, color: T.sub, textAlign: "center", paddingVertical: 30 }}>
-            Complete at least two runs to see how your pace is trending.
+            Complete at least two {typeLabel}s to see how your pace is trending.
           </Text>
         ) : (
         <View style={{ flexDirection: "row", gap: 10, height: 130 }}>
@@ -489,7 +528,7 @@ export function History({ history, monthlyHistory }) {
       <View style={card({ paddingHorizontal: 16 })}>
         {(range === "Weekly" ? history.length : monthlyHistory.length) === 0 ? (
           <Text style={{ fontSize: 13, color: T.sub, textAlign: "center", paddingVertical: 20 }}>
-            No workouts logged yet. Finish a run to see it here.
+            No {typeLabel}s logged yet. Finish a {typeLabel} to see it here.
           </Text>
         ) : range === "Weekly"
           ? history.map((w, i) => {

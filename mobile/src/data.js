@@ -17,6 +17,10 @@ export const WORKOUT_TYPES = {
 };
 export const WORKOUT_TYPE_ORDER = ["run", "walk", "sprint"];
 
+// Rows saved before the workout_type column existed default to "run" server-side
+// (see the migration), but guard here too in case a row is ever missing it.
+export const filterRunsByType = (runs, type) => runs.filter((r) => (r.workout_type ?? "run") === type);
+
 export const MAX_HR = 190; // ≈ 220 - age(30), used for HR-zone breathing guidance
 
 export const HR_ZONES = [

@@ -22,6 +22,7 @@ import {
   deriveConfidence,
   deriveTodayStats,
   deriveWeekBars,
+  filterRunsByType,
   WORKOUT_TYPES,
 } from "./src/data";
 import { TabBar } from "./src/components";
@@ -112,15 +113,26 @@ function AppShell() {
     if (authState === "app") fetchRuns();
   }, [authState, fetchRuns]);
 
+  // Unfiltered — Summary, AI Coach context, and Achievements care about all
+  // activity regardless of type, not whatever the Pace/History trend filter
+  // below happens to be set to.
   const history = useMemo(() => deriveHistory(runs), [runs]);
-  const monthlyHistory = useMemo(() => deriveMonthlyHistory(runs), [runs]);
   const vo2History = useMemo(() => deriveVO2MaxHistory(runs), [runs]);
-  const vo2Labels = useMemo(() => deriveVO2MaxLabels(runs), [runs]);
   const streaks = useMemo(() => deriveStreaks(runs), [runs]);
   const confidenceScore = useMemo(() => deriveConfidence(runs), [runs]);
   const todayStats = useMemo(() => deriveTodayStats(runs), [runs]);
   const weekBars = useMemo(() => deriveWeekBars(runs), [runs]);
-  const latestRun = history[0];
+
+  // Pace/History trend charts are scoped to one workout type at a time —
+  // mixing, say, a 15:00/mi walk into a running pace/VO2max trend would read
+  // as a huge, meaningless outlier.
+  const [trendType, setTrendType] = useState("run");
+  const trendRuns = useMemo(() => filterRunsByType(runs, trendType), [runs, trendType]);
+  const trendHistory = useMemo(() => deriveHistory(trendRuns), [trendRuns]);
+  const trendMonthlyHistory = useMemo(() => deriveMonthlyHistory(trendRuns), [trendRuns]);
+  const trendVo2History = useMemo(() => deriveVO2MaxHistory(trendRuns), [trendRuns]);
+  const trendVo2Labels = useMemo(() => deriveVO2MaxLabels(trendRuns), [trendRuns]);
+  const trendLatestRun = trendHistory[0];
 
   const [cycleDay, setCycleDay] = useState(1);
   const cycleLength = 28;
@@ -253,6 +265,7 @@ function AppShell() {
         const { data, error } = await supabase
           .from("runs")
           .insert({
+            workout_type: paceSettings.workoutType,
             distance_mi: distanceMi,
             duration_sec: tracker.elapsedSeconds,
             avg_pace_sec: Math.round(tracker.elapsedSeconds / distanceMi),
@@ -272,7 +285,7 @@ function AppShell() {
       onResetRun();
       setActiveTab("summary");
     },
-    [tracker, sprintIdx, cadence, hr, speedMph, onResetRun]
+    [tracker, sprintIdx, cadence, hr, speedMph, onResetRun, paceSettings.workoutType]
   );
 
   // AI: single call returning all outputs
@@ -462,13 +475,22 @@ Context:
           )}
           {activeTab === "pace" && (
             <Pace
-              paceMinutes={latestRun?.paceMinutes || []}
-              sprintMinutes={latestRun?.sprintMinutes || new Set()}
-              vo2History={vo2History}
-              vo2Labels={vo2Labels}
+              paceMinutes={trendLatestRun?.paceMinutes || []}
+              sprintMinutes={trendLatestRun?.sprintMinutes || new Set()}
+              vo2History={trendVo2History}
+              vo2Labels={trendVo2Labels}
+              trendType={trendType}
+              onChangeTrendType={setTrendType}
             />
           )}
-          {activeTab === "history" && <History history={history} monthlyHistory={monthlyHistory} />}
+          {activeTab === "history" && (
+            <History
+              history={trendHistory}
+              monthlyHistory={trendMonthlyHistory}
+              trendType={trendType}
+              onChangeTrendType={setTrendType}
+            />
+          )}
           {activeTab === "coach" && <Coach ai={ai} aiLoading={aiLoading} />}
         </ScrollView>
         <TabBar active={activeTab} setActive={setActiveTab} bottomInset={insets.bottom} />
