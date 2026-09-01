@@ -67,7 +67,7 @@ Target → **Info** tab, add:
 
 ## 5. Add the Swift files
 
-Drag the five files from `watch/StrideWatchApp/` in this repo into the
+Drag the six files from `watch/StrideWatchApp/` in this repo into the
 **Stride Watch App** group in Xcode (**Stride Watch App target checkbox
 checked**, not the iOS app target):
 
@@ -80,18 +80,35 @@ checked**, not the iOS app target):
   `updateApplicationContext`)
 - `ContentView.swift` — **replace** the template's auto-generated one, not
   a duplicate
+- `WatchSplashView.swift` — the launch splash (two footprints, same mark as
+  the app icon and the phone/web splash screen); `ContentView` shows it for
+  ~1.1s on launch, then fades it out
 - `StrideWatchApp.swift` — reference only; keep whatever Xcode's template
   actually generated (it'll have a product-name-derived struct name), just
   make sure it renders `ContentView()`
 
-## 6. Bundle identifier note
+## 6. Set the app icon
+
+Xcode generates a placeholder `AppIcon` asset set for the Watch App target
+that you need to replace — this can't be done by dropping in a Swift file,
+it's an asset-catalog-only step:
+
+1. In the **Stride Watch App** group, open **Assets.xcassets → AppIcon**.
+2. Drag `watch/Assets/AppIcon-1024.png` from this repo into the single
+   1024×1024 image well (modern watchOS targets use one universal size,
+   same as iOS — Xcode scales it automatically).
+
+It's the exact same footprints PNG used for the phone app's icon
+(`mobile/assets/icon.png`), so the watch and phone icons match.
+
+## 7. Bundle identifier note
 
 `com.stride.app` was already registered to another Apple Developer team,
 so this project uses `com.gracieudensi.stride` (set in `mobile/app.json`)
 for the companion pairing to succeed. If you fork this for your own team,
 you'll need your own unique identifier too.
 
-## 7. Swift language mode
+## 8. Swift language mode
 
 Apple's older delegate-based frameworks used here (`CLLocationManagerDelegate`,
 `HKWorkoutSessionDelegate`, `HKLiveWorkoutBuilderDelegate`, `WCSessionDelegate`)
@@ -101,7 +118,7 @@ Swift 6's strict concurrency checker. If you hit "reference to captured var
 errors, set the **Stride Watch App** target's Build Settings → **Swift
 Language Mode** to **Swift 5**.
 
-## 8. The phone-side receiver
+## 9. The phone-side receiver
 
 Unlike the watch target, this half needs **no manual Xcode step** — it's a
 regular autolinked Expo module at `mobile/modules/stride-watch-connectivity/`,

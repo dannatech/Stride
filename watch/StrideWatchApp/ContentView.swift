@@ -44,6 +44,7 @@ struct ContentView: View {
     // "run complete" screen is a UI-only beat before the user taps Done — it
     // doesn't need to live in WorkoutManager itself.
     @State private var justFinished = false
+    @State private var showSplash = true
 
     private var runState: RunState {
         if justFinished { return .finished }
@@ -86,6 +87,16 @@ struct ContentView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                 }
+            }
+
+            if showSplash {
+                WatchSplashView()
+                    .transition(.opacity)
+            }
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+                withAnimation(.easeOut(duration: 0.3)) { showSplash = false }
             }
         }
     }
