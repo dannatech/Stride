@@ -196,8 +196,9 @@ extension WorkoutManager: CLLocationManagerDelegate {
         Task { @MainActor in
             self.lastCoordinate = location.coordinate
             self.paceCalculator.ingest(location)
-            self.routeBuilder?.insertRouteData([location]) { success, _ in
-                if success { Task { @MainActor in self.hasRouteData = true } }
+            self.routeBuilder?.insertRouteData([location]) { [weak self] success, _ in
+                guard success else { return }
+                Task { @MainActor in self?.hasRouteData = true }
             }
         }
     }
