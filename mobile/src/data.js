@@ -43,6 +43,24 @@ export const CORE_GOAL = CORE_EXERCISES.length;
 
 export const CORE_HISTORY = []; // { date, completed, totalReps, holdSec } — core sessions aren't persisted yet
 
+/* ───────── profile (sex + birthdate, local-only for now — gates the Cycle card) ───────── */
+
+export const SEX_OPTIONS = [
+  { value: "female", label: "Female" },
+  { value: "male", label: "Male" },
+  { value: "unspecified", label: "Prefer not to say" },
+];
+
+export const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+// A wide-enough range for a birth year picker — "all" years a real user could
+// plausibly have been born in, not just the last few.
+export const BIRTH_YEAR_MIN = new Date().getFullYear() - 100;
+export const BIRTH_YEAR_MAX = new Date().getFullYear() - 5;
+
 /* ───────── derive run analytics from persisted `runs` rows (see supabase/migrations) ─────────
    Each row: { created_at, distance_mi, duration_sec, avg_pace_sec, sprints, avg_hr,
    avg_cadence, rpe, vo2max, pace_minutes, sprint_minutes }. Rows arrive newest-first. */

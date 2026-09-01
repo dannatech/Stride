@@ -44,6 +44,7 @@ import {
   TrainingLoadScreen,
   FormScreen,
   DevicesScreen,
+  ProfileScreen,
 } from "./src/screens";
 
 const PACE_SETTINGS_KEY = "stride.paceSettings.v1";
@@ -52,6 +53,9 @@ const DEFAULT_PACE_SETTINGS = {
   goalPaceSecPerMile: WORKOUT_TYPES.run.goalPaceSecPerMile,
   warmupSeconds: WORKOUT_TYPES.run.warmupSeconds,
 };
+
+const PROFILE_KEY = "stride.profile.v1";
+const DEFAULT_PROFILE = { sex: null, birthMonth: null, birthYear: null };
 
 function AppShell() {
   const insets = useSafeAreaInsets();
@@ -64,6 +68,7 @@ function AppShell() {
   const [trainingLoadPresented, setTrainingLoadPresented] = useState(false);
   const [formPresented, setFormPresented] = useState(false);
   const [devicesPresented, setDevicesPresented] = useState(false);
+  const [profilePresented, setProfilePresented] = useState(false);
 
   // Supabase auth: resolve the current session once, then react to sign-in/out.
   useEffect(() => {
@@ -178,6 +183,27 @@ function AppShell() {
     },
     [holdElapsed]
   );
+
+  // Local-only profile — currently just gates the Cycle card on sex. No
+  // Supabase table for this yet, same tier as paceSettings below.
+  const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  useEffect(() => {
+    AsyncStorage.getItem(PROFILE_KEY).then((raw) => {
+      if (!raw) return;
+      try {
+        setProfile((p) => ({ ...p, ...JSON.parse(raw) }));
+      } catch {
+        // ignore corrupt settings, keep defaults
+      }
+    });
+  }, []);
+  const updateProfile = useCallback((patch) => {
+    setProfile((p) => {
+      const next = { ...p, ...patch };
+      AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
 
   // Real GPS-tracked live run (see src/usePaceTracker). Lifted to AppShell — not the
   // Live screen itself — so tracking keeps running if the user switches tabs mid-run.
@@ -401,6 +427,18 @@ Context:
         />
       </ScrollView>
     );
+  else if (profilePresented)
+    body = (
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
+        <ProfileScreen
+          profile={profile}
+          onChangeSex={(v) => updateProfile({ sex: v })}
+          onChangeBirthMonth={(v) => updateProfile({ birthMonth: v })}
+          onChangeBirthYear={(v) => updateProfile({ birthYear: v })}
+          onBack={() => setProfilePresented(false)}
+        />
+      </ScrollView>
+    );
   else
     body = (
       <>
@@ -411,6 +449,7 @@ Context:
               aiLoading={aiLoading}
               onRegenerate={fetchAi}
               readiness={readiness}
+              sex={profile.sex}
               cycleDay={cycleDay}
               cycleLength={cycleLength}
               openCycle={() => setCyclePresented(true)}
@@ -419,6 +458,7 @@ Context:
               openTrainingLoad={() => setTrainingLoadPresented(true)}
               openForm={() => setFormPresented(true)}
               openDevices={() => setDevicesPresented(true)}
+              openProfile={() => setProfilePresented(true)}
               achievementCtx={achievementContext({ readiness, coreCompleted, history, streaks, confidence: confidenceScore })}
               history={history}
               todayStats={todayStats}

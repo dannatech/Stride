@@ -26,6 +26,10 @@ import {
   confidenceBreakdown,
   WORKOUT_TYPES,
   WORKOUT_TYPE_ORDER,
+  SEX_OPTIONS,
+  MONTH_NAMES,
+  BIRTH_YEAR_MIN,
+  BIRTH_YEAR_MAX,
 } from "./data";
 import { Eyebrow, Chevron, RunningLegs, BackHeader, StatCard, ProgressRing, BreathingGuide, CoreExerciseRow, AchievementBadge } from "./components";
 
@@ -145,6 +149,7 @@ export function Summary({
   aiLoading,
   onRegenerate,
   readiness,
+  sex,
   cycleDay,
   cycleLength,
   openCycle,
@@ -153,6 +158,7 @@ export function Summary({
   openTrainingLoad,
   openForm,
   openDevices,
+  openProfile,
   achievementCtx,
   history,
   todayStats,
@@ -176,9 +182,14 @@ export function Summary({
           </Text>
           <Text style={{ fontSize: 22, fontWeight: "700", color: T.ink }}>{greeting}</Text>
         </View>
-        <Pressable onPress={onSignOut} hitSlop={8}>
-          <Text style={{ fontSize: 12, fontWeight: "600", color: T.sub }}>Log Out</Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 14 }}>
+          <Pressable onPress={openProfile} hitSlop={8}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: T.sub }}>Profile</Text>
+          </Pressable>
+          <Pressable onPress={onSignOut} hitSlop={8}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: T.sub }}>Log Out</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={card({ padding: 24 })}>
@@ -207,19 +218,21 @@ export function Summary({
         </View>
       </Pressable>
 
-      <Pressable
-        onPress={openCycle}
-        style={card({ padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" })}
-      >
-        <View>
-          <Eyebrow>Cycle · Day {cycleDay}</Eyebrow>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: T.ink, marginTop: 4 }}>{phase} phase</Text>
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Text style={{ fontSize: 13, color: T.sub }}>Period in {periodIn}d</Text>
-          <Chevron />
-        </View>
-      </Pressable>
+      {sex === "female" && (
+        <Pressable
+          onPress={openCycle}
+          style={card({ padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" })}
+        >
+          <View>
+            <Eyebrow>Cycle · Day {cycleDay}</Eyebrow>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: T.ink, marginTop: 4 }}>{phase} phase</Text>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Text style={{ fontSize: 13, color: T.sub }}>Period in {periodIn}d</Text>
+            <Chevron />
+          </View>
+        </Pressable>
+      )}
 
       <Pressable
         onPress={openAchievements}
@@ -1178,6 +1191,77 @@ export function DevicesScreen({ onBack, watchPaired, watchConnected }) {
           </View>
         </View>
       ))}
+    </View>
+  );
+}
+
+export function ProfileScreen({ profile, onChangeSex, onChangeBirthMonth, onChangeBirthYear, onBack }) {
+  const birthMonth = profile.birthMonth ?? new Date().getMonth();
+  const birthYear = profile.birthYear ?? BIRTH_YEAR_MAX;
+
+  return (
+    <View style={{ gap: 16, paddingBottom: 30 }}>
+      <BackHeader title="Profile" onBack={onBack} />
+      <Text style={{ fontSize: 13, color: T.sub }}>
+        Used locally to tailor the app to you — for example, the Cycle card only shows up if you're female.
+      </Text>
+
+      <View style={card({ padding: 16 })}>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: T.ink, marginBottom: 12 }}>Sex</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {SEX_OPTIONS.map((opt) => {
+            const active = opt.value === profile.sex;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => onChangeSex(opt.value)}
+                style={{
+                  paddingVertical: 8,
+                  paddingHorizontal: 16,
+                  borderRadius: 999,
+                  backgroundColor: active ? T.accent1 : "transparent",
+                  borderWidth: active ? 0 : 1.5,
+                  borderColor: T.hair,
+                }}
+              >
+                <Text style={{ color: active ? "#fff" : T.sub, fontWeight: "700", fontSize: 13 }}>{opt.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={card({ padding: 16 })}>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: T.ink, marginBottom: 12 }}>Birthdate</Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ fontSize: 13, color: T.ink }}>Month</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <Pressable onPress={() => onChangeBirthMonth((birthMonth + 11) % 12)} hitSlop={8}>
+              <Text style={{ color: T.accent1, fontSize: 18, fontWeight: "800" }}>−</Text>
+            </Pressable>
+            <Text style={{ color: T.ink, fontWeight: "700", fontSize: 14, minWidth: 96, textAlign: "center" }}>
+              {MONTH_NAMES[birthMonth]}
+            </Text>
+            <Pressable onPress={() => onChangeBirthMonth((birthMonth + 1) % 12)} hitSlop={8}>
+              <Text style={{ color: T.accent1, fontSize: 18, fontWeight: "800" }}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14 }}>
+          <Text style={{ fontSize: 13, color: T.ink }}>Year</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <Pressable onPress={() => onChangeBirthYear(Math.max(BIRTH_YEAR_MIN, birthYear - 1))} hitSlop={8}>
+              <Text style={{ color: T.accent1, fontSize: 18, fontWeight: "800" }}>−</Text>
+            </Pressable>
+            <Text style={{ color: T.ink, fontWeight: "700", fontSize: 14, minWidth: 64, textAlign: "center" }}>
+              {birthYear}
+            </Text>
+            <Pressable onPress={() => onChangeBirthYear(Math.min(BIRTH_YEAR_MAX, birthYear + 1))} hitSlop={8}>
+              <Text style={{ color: T.accent1, fontSize: 18, fontWeight: "800" }}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
