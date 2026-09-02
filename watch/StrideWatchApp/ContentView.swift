@@ -46,6 +46,7 @@ struct ContentView: View {
     // doesn't need to live in WorkoutManager itself.
     @State private var justFinished = false
     @State private var showSplash = true
+    @State private var selectedType: WatchWorkoutType = .run
 
     private var runState: RunState {
         if justFinished { return .finished }
@@ -70,6 +71,10 @@ struct ContentView: View {
                             .font(.system(size: 34, weight: .semibold, design: .rounded))
                             .foregroundStyle(StrideColor.ink)
                             .monospacedDigit()
+
+                        if runState == .ready {
+                            typePicker
+                        }
 
                         if runState == .running || runState == .paused || runState == .finished {
                             metricsGrid
@@ -106,8 +111,8 @@ struct ContentView: View {
     private var controls: some View {
         switch runState {
         case .ready:
-            Button(action: workoutManager.start) {
-                Label("Start Run", systemImage: "figure.run")
+            Button(action: { workoutManager.start(type: selectedType) }) {
+                Label("Start \(selectedType.rawValue.capitalized)", systemImage: "figure.run")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -143,6 +148,19 @@ struct ContentView: View {
             Button("Done", action: resetRun)
                 .buttonStyle(.borderedProminent)
                 .tint(StrideColor.accent2)
+        }
+    }
+
+    private var typePicker: some View {
+        HStack(spacing: 4) {
+            ForEach([WatchWorkoutType.run, .walk, .sprint], id: \.self) { type in
+                let active = type == selectedType
+                Button(type.rawValue.capitalized) { selectedType = type }
+                    .font(.system(size: 11, weight: .semibold))
+                    .buttonStyle(.bordered)
+                    .tint(active ? StrideColor.accent1 : StrideColor.cardBg)
+                    .foregroundStyle(active ? Color.white : StrideColor.sub)
+            }
         }
     }
 

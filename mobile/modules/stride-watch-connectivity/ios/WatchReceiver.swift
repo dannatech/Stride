@@ -8,6 +8,7 @@ final class WatchReceiver: NSObject, WCSessionDelegate {
     static let shared = WatchReceiver()
 
     var onPacket: (([String: Any]) -> Void)?
+    var onSessionEvent: ((_ event: String, _ workoutType: String?) -> Void)?
     var onReachabilityChange: (() -> Void)?
 
     private(set) var lastPacket: [String: Any]?
@@ -36,8 +37,15 @@ final class WatchReceiver: NSObject, WCSessionDelegate {
 
     private func deliver(_ payload: [String: Any]) {
         DispatchQueue.main.async {
-            self.lastPacket = payload
-            self.onPacket?(payload)
+            // WorkoutManager sends two shapes over the same channel: a
+            // "sessionEvent" (start/pause/resume/stop, sent immediately) and
+            // regular RunPacket telemetry (sent on a throttled interval).
+            if let event = payload["sessionEvent"] as? String {
+                self.onSessionEvent?(event, payload["workoutType"] as? String)
+            } else {
+                self.lastPacket = payload
+                self.onPacket?(payload)
+            }
         }
     }
 

@@ -29,6 +29,7 @@ import { TabBar } from "./src/components";
 import { supabase } from "./src/supabaseClient";
 import { usePaceTracker, simulatedVitals } from "./src/usePaceTracker";
 import { useWatchConnectivity } from "./src/useWatchConnectivity";
+import { addSessionEventListener } from "./modules/stride-watch-connectivity";
 import { LiveScreen } from "./src/LiveScreen";
 import {
   Splash,
@@ -313,6 +314,26 @@ function AppShell() {
     },
     [tracker, sprintIdx, cadence, hr, speedMph, onResetRun, paceSettings.workoutType]
   );
+
+  // Mirror the watch's Start/Pause/Resume/Stop on the phone's own tracker —
+  // the watch is the controller here, the phone just follows so its GPS
+  // session (and the eventual Supabase save) actually runs alongside it.
+  useEffect(() => {
+    const unsubscribe = addSessionEventListener(({ event, workoutType }) => {
+      if (event === "start") {
+        if (workoutType && WORKOUT_TYPES[workoutType]) onChangeWorkoutType(workoutType);
+        if (!tracker.isTracking) tracker.start();
+        setActiveTab("live");
+      } else if (event === "pause") {
+        if (tracker.isTracking && !tracker.isPaused) tracker.pause();
+      } else if (event === "resume") {
+        if (tracker.isTracking && tracker.isPaused) tracker.resume();
+      } else if (event === "stop") {
+        if (tracker.isTracking) onEndWorkout(null);
+      }
+    });
+    return unsubscribe;
+  }, [tracker, onChangeWorkoutType, onEndWorkout]);
 
   // AI: single call returning all outputs
   const [ai, setAi] = useState(FALLBACK_AI);

@@ -5,7 +5,7 @@ public class StrideWatchConnectivityModule: Module {
     public func definition() -> ModuleDefinition {
         Name("StrideWatchConnectivity")
 
-        Events("onRunPacket", "onReachabilityChange")
+        Events("onRunPacket", "onSessionEvent", "onReachabilityChange")
 
         OnCreate {
             WatchReceiver.shared.start()
@@ -35,6 +35,11 @@ public class StrideWatchConnectivityModule: Module {
             WatchReceiver.shared.onPacket = { [weak self] payload in
                 self?.sendEvent("onRunPacket", payload)
             }
+            WatchReceiver.shared.onSessionEvent = { [weak self] event, workoutType in
+                var body: [String: Any] = ["event": event]
+                if let workoutType { body["workoutType"] = workoutType }
+                self?.sendEvent("onSessionEvent", body)
+            }
             WatchReceiver.shared.onReachabilityChange = { [weak self] in
                 self?.sendEvent("onReachabilityChange", [
                     "isPaired": WatchReceiver.shared.isPaired,
@@ -46,6 +51,7 @@ public class StrideWatchConnectivityModule: Module {
 
         OnStopObserving {
             WatchReceiver.shared.onPacket = nil
+            WatchReceiver.shared.onSessionEvent = nil
             WatchReceiver.shared.onReachabilityChange = nil
         }
     }

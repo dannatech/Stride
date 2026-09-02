@@ -4,6 +4,18 @@ import CoreLocation
 import HealthKit
 import WatchConnectivity
 
+// Mirrors the phone's WORKOUT_TYPES (mobile/src/data.js) — HealthKit has no
+// distinct "sprint" activity type, so sprint maps to .running same as run.
+public enum WatchWorkoutType: String {
+    case run
+    case walk
+    case sprint
+
+    var hkActivityType: HKWorkoutActivityType {
+        self == .walk ? .walking : .running
+    }
+}
+
 @MainActor
 public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
     @Published public var isRunning = false
@@ -43,6 +55,7 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
     private var elapsedTimer: Timer?
     private var lastSendDate: Date = .distantPast
     private let sendInterval: TimeInterval = 2
+    private var currentType: WatchWorkoutType = .run
 
     public override init() {
         super.init()
@@ -69,11 +82,12 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
         }
     }
 
-    public func start() {
+    public func start(type: WatchWorkoutType = .run) {
         requestAuthorization()
+        currentType = type
 
         let configuration = HKWorkoutConfiguration()
-        configuration.activityType = .running
+        configuration.activityType = type.hkActivityType
         configuration.locationType = .outdoor
 
         do {
@@ -105,6 +119,7 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
             locationManager.requestWhenInUseAuthorization()
             locationManager.startUpdatingLocation()
             startElapsedTimer()
+            sendSessionEvent("start", workoutType: type)
         } catch {
             authorizationError = error.localizedDescription
         }
@@ -114,12 +129,14 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
         isPaused = true
         locationManager.stopUpdatingLocation()
         elapsedTimer?.invalidate()
+        sendSessionEvent("pause")
     }
 
     public func resume() {
         isPaused = false
         locationManager.startUpdatingLocation()
         startElapsedTimer()
+        sendSessionEvent("resume")
     }
 
     public func stop() {
@@ -127,6 +144,7 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
         isPaused = false
         elapsedTimer?.invalidate()
         locationManager.stopUpdatingLocation()
+        sendSessionEvent("stop")
 
         guard let session = workoutSession, let builder = liveBuilder else { return }
         // Capture before clearing below; only actually finish the route if we
@@ -174,6 +192,22 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
             power: power,
             elapsedSeconds: elapsedSeconds
         ))
+    }
+
+    // Sent immediately (not throttled like telemetry) so the phone can mirror
+    // Start/Pause/Resume/Stop as soon as they happen on the watch.
+    private func sendSessionEvent(_ event: String, workoutType: WatchWorkoutType? = nil) {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        var payload: [String: Any] = ["sessionEvent": event]
+        if let workoutType { payload["workoutType"] = workoutType.rawValue }
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil) { _ in
+                try? session.updateApplicationContext(payload)
+            }
+        } else {
+            try? session.updateApplicationContext(payload)
+        }
     }
 
     private func send(_ packet: RunPacket) {

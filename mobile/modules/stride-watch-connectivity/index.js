@@ -36,6 +36,19 @@ export function addRunPacketListener(listener) {
 }
 
 /**
+ * Fires with { event, workoutType } whenever the watch starts/pauses/
+ * resumes/stops a run — sent immediately (not throttled like telemetry),
+ * so the phone can mirror the watch's session state right away.
+ * event is one of "start" | "pause" | "resume" | "stop".
+ * workoutType is one of "run" | "walk" | "sprint", only present on "start".
+ */
+export function addSessionEventListener(listener) {
+  if (!native) return () => {};
+  const subscription = native.addListener("onSessionEvent", listener);
+  return () => subscription.remove();
+}
+
+/**
  * Fires with { isPaired, isWatchAppInstalled, isReachable } whenever the
  * watch's pairing/install/reachability state changes.
  */
