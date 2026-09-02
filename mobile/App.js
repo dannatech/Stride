@@ -9,7 +9,6 @@ import {
   CORE_EXERCISES,
   CORE_GOAL,
   FALLBACK_AI,
-  CORE_HISTORY,
   phaseFor,
   achievementContext,
   fmtPace,
