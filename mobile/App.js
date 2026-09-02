@@ -356,9 +356,12 @@ function AppShell() {
     // WCSession.isReachable is false. Reachability only describes whether
     // immediate sendMessage delivery is available; application-context
     // telemetry can still arrive while it is false.
-    if (watch.packetCount > 0 && watch.lastPacket && !trackerRef.current.isTracking) {
-      trackerRef.current.start();
-      setActiveTab("live");
+    if (watch.packetCount > 0 && watch.lastPacket) {
+      if (!trackerRef.current.isTracking) {
+        trackerRef.current.start();
+        setActiveTab("live");
+      }
+      trackerRef.current.syncElapsed(watch.lastPacket.elapsedSeconds);
     }
   }, [watch.packetCount, watch.lastPacket]);
 
