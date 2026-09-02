@@ -56,6 +56,7 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
     private var lastSendDate: Date = .distantPast
     private let sendInterval: TimeInterval = 2
     private var currentType: WatchWorkoutType = .run
+    private var lastPhoneCommandSentAt: TimeInterval = 0
 
     public override init() {
         super.init()
@@ -314,7 +315,15 @@ extension WorkoutManager: WCSessionDelegate {
 
     nonisolated private func receivePhoneCommand(_ payload: [String: Any]) {
         guard let command = payload["phoneCommand"] as? String else { return }
+        let sentAt = payload["commandSentAt"] as? TimeInterval ?? Date().timeIntervalSince1970
+        let commandID = payload["commandID"] as? String ?? "legacy"
         Task { @MainActor in
+            guard sentAt > self.lastPhoneCommandSentAt else {
+                print("[Stride] ignoring duplicate/stale phone command:", command, commandID)
+                return
+            }
+            self.lastPhoneCommandSentAt = sentAt
+            print("[Stride] received phone command:", command, commandID)
             switch command {
             case "pause":
                 if self.isRunning && !self.isPaused { self.pause(notifyPhone: false) }
