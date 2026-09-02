@@ -29,8 +29,9 @@ export interface WatchConnectivityState {
   appInstalled: boolean;
   reachable: boolean;
   lastPacket: WatchRunPacket | null;
-  // reachable AND a packet has arrived recently — the signal to actually
-  // trust and display watch data, vs. just "a watch happens to be nearby".
+  // A packet has arrived recently — the signal to trust and display Watch
+  // data. WCSession reachability only describes immediate messaging and can
+  // be false while application-context telemetry is still arriving.
   connected: boolean;
   // Debug/diagnostic counters — how many of each thing has ever arrived
   // this app session, and the raw text of the last session event, so a
@@ -93,7 +94,7 @@ export function useWatchConnectivity(): WatchConnectivityState {
     return () => clearInterval(id);
   }, [supported]);
 
-  const connected = supported && reachable && lastPacketAt > 0 && now - lastPacketAt < STALE_MS;
+  const connected = supported && lastPacketAt > 0 && now - lastPacketAt < STALE_MS;
 
   return {
     supported,
