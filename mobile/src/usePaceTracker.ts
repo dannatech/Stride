@@ -18,6 +18,7 @@ export interface PaceTrackerState {
 
 export interface PaceTrackerControls {
   start: () => Promise<void>;
+  syncElapsed: (seconds: number) => void;
   pause: () => void;
   resume: () => Promise<void>;
   reset: () => void;
@@ -151,6 +152,14 @@ export function usePaceTracker(goalPaceSecPerMile: number, warmupSeconds = 300):
     await startWatch();
   }, [startWatch]);
 
+  // Reconcile the phone clock to the Watch's authoritative workout clock.
+  // Packets arrive roughly every two seconds, while the local interval keeps
+  // the UI ticking smoothly between reconciliations.
+  const syncElapsed = useCallback((seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return;
+    setElapsedSeconds(Math.floor(seconds));
+  }, []);
+
   const pause = useCallback(() => {
     setIsPaused(true);
     safeRemoveSubscription(watchSubRef.current);
@@ -214,6 +223,7 @@ export function usePaceTracker(goalPaceSecPerMile: number, warmupSeconds = 300):
     isTracking,
     isPaused,
     start,
+    syncElapsed,
     pause,
     resume,
     reset,
