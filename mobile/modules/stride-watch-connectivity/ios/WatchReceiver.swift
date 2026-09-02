@@ -35,6 +35,29 @@ final class WatchReceiver: NSObject, WCSessionDelegate {
         WCSession.isSupported() && WCSession.default.isReachable
     }
 
+    @discardableResult
+    func sendSessionCommand(_ command: String) -> Bool {
+        guard WCSession.isSupported(),
+              ["pause", "resume", "stop"].contains(command) else { return false }
+
+        let session = WCSession.default
+        let payload: [String: Any] = ["phoneCommand": command]
+
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil) { error in
+                print("[StrideWatchConnectivity] phone command send failed; queueing:", error.localizedDescription)
+                session.transferUserInfo(payload)
+                try? session.updateApplicationContext(payload)
+            }
+        } else {
+            // Use both queued delivery and latest-state context. This makes a
+            // stop command reliable when immediate messaging is unavailable.
+            session.transferUserInfo(payload)
+            try? session.updateApplicationContext(payload)
+        }
+        return true
+    }
+
     private func deliver(_ payload: [String: Any]) {
         DispatchQueue.main.async {
             // WorkoutManager sends two shapes over the same channel: a
