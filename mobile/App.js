@@ -352,11 +352,15 @@ function AppShell() {
   // active — this reuses the already-working RunPacket channel instead of
   // depending solely on the separate sessionEvent signal above.
   useEffect(() => {
-    if (watch.connected && !trackerRef.current.isTracking) {
+    // A fresh packet proves the watch workout is active even when
+    // WCSession.isReachable is false. Reachability only describes whether
+    // immediate sendMessage delivery is available; application-context
+    // telemetry can still arrive while it is false.
+    if (watch.packetCount > 0 && watch.lastPacket && !trackerRef.current.isTracking) {
       trackerRef.current.start();
       setActiveTab("live");
     }
-  }, [watch.connected]);
+  }, [watch.packetCount, watch.lastPacket]);
 
   // AI: single call returning all outputs
   const [ai, setAi] = useState(FALLBACK_AI);
