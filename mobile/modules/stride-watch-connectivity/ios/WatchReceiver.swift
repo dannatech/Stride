@@ -78,6 +78,13 @@ final class WatchReceiver: NSObject, WCSessionDelegate {
         deliver(message)
     }
 
+    // Queued session events arrive here when the counterpart is not reachable.
+    // Unlike applicationContext, user-info transfers are not overwritten by
+    // the next telemetry packet.
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        deliver(userInfo)
+    }
+
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         deliver(applicationContext)
     }
