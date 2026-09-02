@@ -29,7 +29,7 @@ import { TabBar } from "./src/components";
 import { supabase } from "./src/supabaseClient";
 import { usePaceTracker, simulatedVitals } from "./src/usePaceTracker";
 import { useWatchConnectivity } from "./src/useWatchConnectivity";
-import { addSessionEventListener } from "./modules/stride-watch-connectivity";
+import { addSessionEventListener, sendSessionCommand } from "./modules/stride-watch-connectivity";
 import { LiveScreen } from "./src/LiveScreen";
 import {
   Splash,
@@ -57,6 +57,23 @@ const DEFAULT_PACE_SETTINGS = {
 
 const PROFILE_KEY = "stride.profile.v1";
 const DEFAULT_PROFILE = { sex: null, birthMonth: null, birthYear: null };
+
+const EMPTY_GAIT_TOTALS = () => ({
+  groundContactTime: { sum: 0, count: 0 },
+  verticalOscillation: { sum: 0, count: 0 },
+  strideLength: { sum: 0, count: 0 },
+  power: { sum: 0, count: 0 },
+});
+
+function addGaitSample(totals, key, value) {
+  if (!Number.isFinite(value) || value <= 0) return;
+  totals[key].sum += value;
+  totals[key].count += 1;
+}
+
+function averageGaitMetric(metric) {
+  return metric.count > 0 ? metric.sum / metric.count : null;
+}
 
 function AppShell() {
   const insets = useSafeAreaInsets();
@@ -251,9 +268,23 @@ function AppShell() {
       ? {
           groundContactTime: watch.lastPacket.groundContactTime,
           verticalOscillation: watch.lastPacket.verticalOscillation,
+          strideLength: watch.lastPacket.strideLength,
           power: watch.lastPacket.power,
         }
       : null;
+
+  // Accumulate valid Watch samples so completed runs persist session-level
+  // gait and power averages, rather than only displaying the latest packet.
+  const gaitTotalsRef = useRef(EMPTY_GAIT_TOTALS());
+  useEffect(() => {
+    const packet = watch.lastPacket;
+    if (!packet || watch.packetCount === 0) return;
+    const totals = gaitTotalsRef.current;
+    addGaitSample(totals, "groundContactTime", packet.groundContactTime);
+    addGaitSample(totals, "verticalOscillation", packet.verticalOscillation);
+    addGaitSample(totals, "strideLength", packet.strideLength);
+    addGaitSample(totals, "power", packet.power);
+  }, [watch.packetCount, watch.lastPacket]);
 
   const [sprintIdx, setSprintIdx] = useState(0);
   const [laps, setLaps] = useState([]);
@@ -277,12 +308,15 @@ function AppShell() {
     sprintMinutesRef.current = new Set();
     setSprintIdx(0);
     setLaps([]);
+    gaitTotalsRef.current = EMPTY_GAIT_TOTALS();
     tracker.reset();
   }, [tracker]);
 
   const [rpeLog, setRpeLog] = useState([]);
   const onEndWorkout = useCallback(
-    async (rpe) => {
+    async (rpe, { notifyWatch = true } = {}) => {
+      if (notifyWatch) sendSessionCommand("stop");
+
       const finalHr = Math.round(hr);
       if (rpe != null) {
         setRpeLog((log) => [{ rpe, hr: finalHr }, ...log].slice(0, 10));
@@ -299,6 +333,10 @@ function AppShell() {
             sprints: sprintIdx,
             avg_hr: finalHr,
             avg_cadence: Math.round(cadence),
+            avg_ground_contact_time_ms: averageGaitMetric(gaitTotalsRef.current.groundContactTime),
+            avg_vertical_oscillation_cm: averageGaitMetric(gaitTotalsRef.current.verticalOscillation),
+            avg_stride_length_m: averageGaitMetric(gaitTotalsRef.current.strideLength),
+            avg_running_power_watts: averageGaitMetric(gaitTotalsRef.current.power),
             rpe: rpe ?? null,
             vo2max: Math.round(estimateVO2(speedMph) * 10) / 10,
             pace_minutes: minuteLogRef.current,
@@ -341,7 +379,7 @@ function AppShell() {
       } else if (event === "resume") {
         if (tracker.isTracking && tracker.isPaused) tracker.resume();
       } else if (event === "stop") {
-        if (tracker.isTracking) onEndWorkoutRef.current(null);
+        if (tracker.isTracking) onEndWorkoutRef.current(null, { notifyWatch: false });
       }
     });
     return unsubscribe;
@@ -364,6 +402,33 @@ function AppShell() {
       trackerRef.current.syncElapsed(watch.lastPacket.elapsedSeconds);
     }
   }, [watch.packetCount, watch.lastPacket]);
+
+  const onPhonePause = useCallback(() => {
+    tracker.pause();
+    sendSessionCommand("pause");
+  }, [tracker.pause]);
+
+  const onPhoneResume = useCallback(() => {
+    tracker.resume();
+    sendSessionCommand("resume");
+  }, [tracker.resume]);
+
+  // Stop the Watch immediately after the phone's second confirmation tap.
+  // Saving waits for the optional RPE selection, but both workout clocks stop now.
+  const onPhoneStopRequested = useCallback(() => {
+    if (tracker.isTracking && !tracker.isPaused) tracker.pause();
+    sendSessionCommand("stop");
+  }, [tracker.isTracking, tracker.isPaused, tracker.pause]);
+
+  const onFinishPhoneWorkout = useCallback(
+    (rpe) => onEndWorkout(rpe, { notifyWatch: false }),
+    [onEndWorkout]
+  );
+
+  const onPhoneReset = useCallback(() => {
+    sendSessionCommand("stop");
+    onResetRun();
+  }, [onResetRun]);
 
   // AI: single call returning all outputs
   const [ai, setAi] = useState(FALLBACK_AI);
@@ -545,12 +610,13 @@ Context:
               onChangeGoalPace={(v) => updatePaceSettings({ goalPaceSecPerMile: v })}
               onChangeWarmup={(v) => updatePaceSettings({ warmupSeconds: v })}
               onStart={tracker.start}
-              onPause={tracker.pause}
-              onResume={tracker.resume}
-              onReset={onResetRun}
+              onPause={onPhonePause}
+              onResume={onPhoneResume}
+              onReset={onPhoneReset}
               onRequestPermission={tracker.requestPermission}
               onLap={onLap}
-              onEndWorkout={onEndWorkout}
+              onStopRequested={onPhoneStopRequested}
+              onEndWorkout={onFinishPhoneWorkout}
             />
           )}
           {activeTab === "core" && (
