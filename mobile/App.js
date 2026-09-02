@@ -9,7 +9,6 @@ import {
   CORE_EXERCISES,
   CORE_GOAL,
   FALLBACK_AI,
-  CORE_HISTORY,
   phaseFor,
   achievementContext,
   fmtPace,
@@ -55,7 +54,6 @@ const DEFAULT_PACE_SETTINGS = {
   warmupSeconds: WORKOUT_TYPES.run.warmupSeconds,
 };
 
-const PROFILE_KEY = "stride.profile.v1";
 const DEFAULT_PROFILE = { sex: null, birthMonth: null, birthYear: null };
 
 const EMPTY_GAIT_TOTALS = () => ({
@@ -143,6 +141,14 @@ function AppShell() {
   const vo2History = useMemo(() => deriveVO2MaxHistory(runs), [runs]);
   const streaks = useMemo(() => deriveStreaks(runs), [runs]);
   const confidenceScore = useMemo(() => deriveConfidence(runs), [runs]);
+  const rpeLog = useMemo(
+    () =>
+      runs
+        .filter((run) => run.rpe != null)
+        .slice(0, 10)
+        .map((run) => ({ rpe: run.rpe, hr: run.avg_hr })),
+    [runs]
+  );
   const todayStats = useMemo(() => deriveTodayStats(runs), [runs]);
   const weekBars = useMemo(() => deriveWeekBars(runs), [runs]);
 
@@ -158,8 +164,8 @@ function AppShell() {
   const trendLatestRun = trendHistory[0];
 
   const [cycleDay, setCycleDay] = useState(1);
-  const cycleLength = 28;
-  const periodLength = 5;
+  const [cycleLength] = useState(28);
+  const [periodLength] = useState(5);
 
   const [recovery, setRecovery] = useState({ sleepHours: 7.4, restingHR: 54, soreness: "Low", stretchDone: false });
   const readiness = useMemo(() => {
@@ -202,25 +208,83 @@ function AppShell() {
     [holdElapsed]
   );
 
-  // Local-only profile — currently just gates the Cycle card on sex. No
-  // Supabase table for this yet, same tier as paceSettings below.
+  // Summary preferences and health inputs are account-backed so the Summary
+  // tab is consistent across devices. Row-level security limits this row to
+  // the signed-in Supabase user.
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  const [summaryUserId, setSummaryUserId] = useState(null);
+  const [summaryLoaded, setSummaryLoaded] = useState(false);
+
   useEffect(() => {
-    AsyncStorage.getItem(PROFILE_KEY).then((raw) => {
-      if (!raw) return;
-      try {
-        setProfile((p) => ({ ...p, ...JSON.parse(raw) }));
-      } catch {
-        // ignore corrupt settings, keep defaults
+    let cancelled = false;
+    if (authState !== "app") {
+      setSummaryUserId(null);
+      setSummaryLoaded(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    (async () => {
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
+      if (!userId || cancelled) return;
+
+      const { data, error } = await supabase.from("user_summary_state").select("*").eq("user_id", userId).maybeSingle();
+      if (cancelled) return;
+      if (error) console.error("Failed to load Summary data:", error);
+      if (data) {
+        setProfile({
+          sex: data.sex ?? null,
+          birthMonth: data.birth_month ?? null,
+          birthYear: data.birth_year ?? null,
+        });
+        setCycleDay(data.cycle_day ?? 1);
+        setRecovery({
+          sleepHours: Number(data.sleep_hours ?? 7.4),
+          restingHR: data.resting_hr ?? 54,
+          soreness: data.soreness ?? "Low",
+          stretchDone: Boolean(data.stretch_done),
+        });
+        setCoreToday(data.core_today && typeof data.core_today === "object" ? data.core_today : {});
       }
-    });
-  }, []);
+      setSummaryUserId(userId);
+      setSummaryLoaded(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authState]);
+
+  useEffect(() => {
+    if (!summaryLoaded || !summaryUserId) return;
+    const timeout = setTimeout(async () => {
+      const { error } = await supabase.from("user_summary_state").upsert(
+        {
+          user_id: summaryUserId,
+          sex: profile.sex,
+          birth_month: profile.birthMonth,
+          birth_year: profile.birthYear,
+          cycle_day: cycleDay,
+          cycle_length: cycleLength,
+          period_length: periodLength,
+          sleep_hours: recovery.sleepHours,
+          resting_hr: recovery.restingHR,
+          soreness: recovery.soreness,
+          stretch_done: recovery.stretchDone,
+          core_today: coreToday,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      );
+      if (error) console.error("Failed to save Summary data:", error);
+    }, 600);
+    return () => clearTimeout(timeout);
+  }, [summaryLoaded, summaryUserId, profile, cycleDay, cycleLength, periodLength, recovery, coreToday]);
+
   const updateProfile = useCallback((patch) => {
-    setProfile((p) => {
-      const next = { ...p, ...patch };
-      AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(next)).catch(() => {});
-      return next;
-    });
+    setProfile((p) => ({ ...p, ...patch }));
   }, []);
 
   // Real GPS-tracked live run (see src/usePaceTracker). Lifted to AppShell — not the
@@ -312,15 +376,11 @@ function AppShell() {
     tracker.reset();
   }, [tracker]);
 
-  const [rpeLog, setRpeLog] = useState([]);
   const onEndWorkout = useCallback(
     async (rpe, { notifyWatch = true } = {}) => {
       if (notifyWatch) sendSessionCommand("stop");
 
       const finalHr = Math.round(hr);
-      if (rpe != null) {
-        setRpeLog((log) => [{ rpe, hr: finalHr }, ...log].slice(0, 10));
-      }
       const distanceMi = Math.round(tracker.distanceMiles * 100) / 100;
       if (tracker.elapsedSeconds > 0 && distanceMi > 0) {
         const { data, error } = await supabase
@@ -441,9 +501,9 @@ function AppShell() {
           ? `Recent runs (newest first, avg pace): ${history.map((w) => fmtPace(w.pace)).join(", ")}.`
           : "This athlete has no logged runs yet — they're brand new to the app.";
       const coreContext =
-        CORE_HISTORY.length > 0
-          ? `Recent core sessions completed: ${CORE_HISTORY.map((h) => `${h.completed}/${CORE_GOAL}`).join(", ")}.`
-          : "No core sessions logged yet.";
+        coreCompleted > 0
+          ? `Current core progress: ${coreCompleted}/${CORE_GOAL} exercises completed.`
+          : "No core exercises completed yet.";
       const vo2Context =
         vo2History.length > 0
           ? `VO2max estimate trend (ml/kg/min): ${vo2History.join(", ")}.`
@@ -474,7 +534,7 @@ Context:
     } finally {
       setAiLoading(false);
     }
-  }, [cycleDay, history, vo2History]);
+  }, [cycleDay, coreCompleted, history, vo2History]);
   useEffect(() => {
     if (authState === "app") fetchAi();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -530,7 +590,7 @@ Context:
   else if (formPresented)
     body = (
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
-        <FormScreen session={{ cadence, hr }} onBack={() => setFormPresented(false)} />
+        <FormScreen session={history[0] ?? null} onBack={() => setFormPresented(false)} />
       </ScrollView>
     );
   else if (devicesPresented)
@@ -580,6 +640,13 @@ Context:
               history={history}
               todayStats={todayStats}
               weekBars={weekBars}
+              dataSourceLabel={
+                history[0]?.groundContactTime > 0 || history[0]?.verticalOscillation > 0
+                  ? "Supabase · Apple Watch + GPS"
+                  : history.length
+                    ? "Supabase · Phone GPS"
+                    : "Supabase · No workouts yet"
+              }
               onSignOut={onSignOut}
             />
           )}

@@ -163,6 +163,7 @@ export function Summary({
   history,
   todayStats,
   weekBars,
+  dataSourceLabel,
   onSignOut,
 }) {
   const phase = phaseFor(cycleDay);
@@ -258,7 +259,7 @@ export function Summary({
         </Pressable>
         <Pressable onPress={openDevices} style={card({ padding: 14, flex: 1 })}>
           <Eyebrow color={T.sub}>Devices</Eyebrow>
-          <Text style={{ fontSize: 13, fontWeight: "700", color: T.ink, marginTop: 6 }}>Fallback tier</Text>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: T.ink, marginTop: 6 }}>{dataSourceLabel}</Text>
         </Pressable>
       </View>
 
@@ -1054,63 +1055,48 @@ export function TrainingLoadScreen({ readiness, rpeLog, history, confidenceScore
 }
 
 export function FormScreen({ session, onBack }) {
-  const { cadence, hr } = session;
-  const groundContactMs = Math.round(240 - (cadence - 172) * 1.4);
-  const verticalOscCm = Math.round((9.2 - (cadence - 172) * 0.03) * 10) / 10;
-  const strikePattern = cadence > 175 ? "Midfoot" : cadence > 168 ? "Heel" : "Forefoot";
-  const symmetryPct = 96 + Math.round(Math.sin(hr / 7) * 3);
-  const formScore = Math.max(0, Math.min(100, Math.round(72 + (cadence - 172) * 1.8 - Math.abs(100 - symmetryPct) * 2)));
-  const fatigueCurve = [100, 98, 95, 93, 88, 84];
+  if (!session) {
+    return (
+      <View style={{ gap: 16, paddingBottom: 30 }}>
+        <BackHeader title="Form" onBack={onBack} />
+        <View style={card({ padding: 18 })}>
+          <Text style={{ fontSize: 13, color: T.sub }}>
+            Complete a workout to see database-backed gait and sensor data here.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const metrics = [
+    ["Average Pace", fmtPace(session.pace) + " /mi"],
+    ["Heart Rate", session.avgHr > 0 ? Math.round(session.avgHr) + " bpm" : "Unavailable"],
+    ["Cadence", session.cadence > 0 ? Math.round(session.cadence) + " spm" : "Unavailable"],
+    ["Ground Contact", session.groundContactTime > 0 ? Math.round(session.groundContactTime) + " ms" : "Unavailable"],
+    ["Vertical Oscillation", session.verticalOscillation > 0 ? session.verticalOscillation.toFixed(1) + " cm" : "Unavailable"],
+    ["Stride Length", session.strideLength > 0 ? session.strideLength.toFixed(2) + " m" : "Unavailable"],
+    ["Running Power", session.runningPower > 0 ? Math.round(session.runningPower) + " W" : "Unavailable"],
+    ["VO2max", session.vo2max > 0 ? session.vo2max.toFixed(1) + " ml/kg/min" : "Unavailable"],
+  ];
+
   return (
     <View style={{ gap: 16, paddingBottom: 30 }}>
       <BackHeader title="Form" onBack={onBack} />
-
-      <View style={card({ padding: 20, alignItems: "center" })}>
-        <Eyebrow>Form Score</Eyebrow>
-        <Text style={{ fontSize: 44, fontWeight: "800", color: T.ink, marginTop: 6 }}>{formScore}</Text>
-        <Text style={{ fontSize: 11, color: T.sub, marginTop: 4 }}>Fallback tier (phone-only) · estimated, not diagnostic</Text>
+      <View style={card({ padding: 18 })}>
+        <Eyebrow color={T.accent2}>Latest Saved Workout</Eyebrow>
+        <Text style={{ color: T.sub, fontSize: 12, marginTop: 6 }}>{session.date} · {session.distance}</Text>
       </View>
-
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <View style={{ width: "48%" }}>
-          <StatCard value={strikePattern} label="Strike Pattern" />
-        </View>
-        <View style={{ width: "48%" }}>
-          <StatCard value={`${symmetryPct}%`} label="L/R Symmetry" />
-        </View>
-        <View style={{ width: "48%" }}>
-          <StatCard value={`${groundContactMs} ms`} label="Ground Contact" />
-        </View>
-        <View style={{ width: "48%" }}>
-          <StatCard value={`${verticalOscCm} cm`} label="Vertical Oscillation" />
-        </View>
+        {metrics.map(([label, value]) => (
+          <View key={label} style={{ width: "48%" }}>
+            <StatCard value={value} label={label} valueColor={value === "Unavailable" ? T.sub : T.ink} />
+          </View>
+        ))}
       </View>
-
       <View style={card({ padding: 16 })}>
-        <Text style={{ fontSize: 14, fontWeight: "700", color: T.ink, marginBottom: 4 }}>Cadence Fatigue Curve</Text>
-        <Text style={{ fontSize: 11, color: T.sub, marginBottom: 14 }}>% of starting cadence, by kilometer this run</Text>
-        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6, height: 90 }}>
-          {fatigueCurve.map((v, i) => (
-            <View key={i} style={{ flex: 1, alignItems: "center", gap: 5, height: "100%", justifyContent: "flex-end" }}>
-              <View style={{ width: "100%", height: `${v}%`, borderRadius: 4, backgroundColor: v < 90 ? T.amber : T.accent1 }} />
-              <Text style={{ fontSize: 9, color: T.sub }}>{i + 1}k</Text>
-            </View>
-          ))}
-        </View>
-        {fatigueCurve[fatigueCurve.length - 1] < 90 && (
-          <Text style={{ fontSize: 12, color: T.amber, marginTop: 12 }}>
-            Cadence dropped {100 - fatigueCurve[fatigueCurve.length - 1]}% by the final kilometer — a common late-run fatigue
-            signature.
-          </Text>
-        )}
-      </View>
-
-      <View style={card({ padding: 16 })}>
-        <Eyebrow color={T.red}>About These Numbers</Eyebrow>
+        <Eyebrow>Data Source</Eyebrow>
         <Text style={{ fontSize: 12, color: T.sub, lineHeight: 18, marginTop: 8 }}>
-          Strike pattern and symmetry are unreliable from a pocketed phone — arm swing and phone placement dominate the
-          signal. For validated running-dynamics data, connect a Garmin Running Dynamics Pod, Stryd, or an Apple Watch
-          SE/Series 6+ in Devices.
+          These values come from the latest row saved in Supabase. Watch running dynamics remain unavailable when HealthKit did not provide a valid sample.
         </Text>
       </View>
     </View>
@@ -1226,7 +1212,7 @@ export function ProfileScreen({ profile, onChangeSex, onChangeBirthMonth, onChan
     <View style={{ gap: 16, paddingBottom: 30 }}>
       <BackHeader title="Profile" onBack={onBack} />
       <Text style={{ fontSize: 13, color: T.sub }}>
-        Used locally to tailor the app to you — for example, the Cycle card only shows up if you're female.
+        Saved to your account to tailor the Summary tab across devices.
       </Text>
 
       <View style={card({ padding: 16 })}>

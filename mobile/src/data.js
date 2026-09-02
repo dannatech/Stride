@@ -74,8 +74,13 @@ export const deriveHistory = (runs) =>
     sprints: r.sprints,
     distance: `${r.distance_mi.toFixed(2)} mi`,
     pace: r.avg_pace_sec,
+    durationSec: r.duration_sec,
     avgHr: r.avg_hr,
     cadence: r.avg_cadence,
+    groundContactTime: r.avg_ground_contact_time_ms,
+    verticalOscillation: r.avg_vertical_oscillation_cm,
+    strideLength: r.avg_stride_length_m,
+    runningPower: r.avg_running_power_watts,
     rpe: r.rpe,
     vo2max: r.vo2max,
     paceMinutes: r.pace_minutes || [],
@@ -139,9 +144,25 @@ export const deriveStreaks = (runs) => {
   return { current, longest };
 };
 
-// Illustrative composite — this app has no real multi-sensor stream to grade (see
-// confidenceBreakdown() below), so it's a fixed "Fallback tier" value once any run exists.
-export const deriveConfidence = (runs) => (runs.length > 0 ? 72 : 0);
+// Sensor-completeness score for the newest persisted run. Core GPS workout
+// fields contribute 40 points; each available heart-rate/cadence/Watch gait
+// field contributes 10. This reflects stored evidence, not a fixed tier.
+export const deriveConfidence = (runs) => {
+  if (runs.length === 0) return 0;
+  const r = runs[0];
+  let score = r.distance_mi > 0 && r.duration_sec > 0 && r.avg_pace_sec > 0 ? 40 : 0;
+  [
+    r.avg_hr,
+    r.avg_cadence,
+    r.avg_ground_contact_time_ms,
+    r.avg_vertical_oscillation_cm,
+    r.avg_stride_length_m,
+    r.avg_running_power_watts,
+  ].forEach((value) => {
+    if (Number.isFinite(value) && value > 0) score += 10;
+  });
+  return score;
+};
 
 export const deriveTodayStats = (runs) => {
   const todayStr = new Date().toDateString();
@@ -273,15 +294,23 @@ export const computeACWR = (history) => {
   return { hasData: true, acute: Math.round(acute), chronic: Math.round(chronic), ratio: Math.round(ratio * 100) / 100, risk, riskColor };
 };
 
-// Illustrative confidence breakdown — no real GPS/sensor stream to grade; see spec section 3.
-export const confidenceBreakdown = (history) =>
-  history.length === 0
-    ? [{ label: "Status", value: "No runs logged yet", good: null }]
-    : [
-        { label: "GPS signal", value: "Strong", good: true },
-        { label: "Sensor agreement", value: "High", good: true },
-        { label: "Source", value: "Phone GPS + accelerometer (Fallback tier)", good: null },
-      ];
+// Explain exactly which persisted sensors powered the latest run.
+export const confidenceBreakdown = (history) => {
+  if (history.length === 0) return [{ label: "Status", value: "No runs logged yet", good: null }];
+  const latest = history[0];
+  const hasWatchGait = [
+    latest.groundContactTime,
+    latest.verticalOscillation,
+    latest.strideLength,
+    latest.runningPower,
+  ].some((value) => Number.isFinite(value) && value > 0);
+  return [
+    { label: "GPS workout", value: latest.durationSec > 0 ? "Stored" : "Missing", good: latest.durationSec > 0 },
+    { label: "Heart rate", value: latest.avgHr > 0 ? "Stored" : "Unavailable", good: latest.avgHr > 0 },
+    { label: "Cadence", value: latest.cadence > 0 ? "Stored" : "Unavailable", good: latest.cadence > 0 },
+    { label: "Running dynamics", value: hasWatchGait ? "Apple Watch" : "Unavailable", good: hasWatchGait },
+  ];
+};
 
 export const FALLBACK_AI = {
   postWorkoutInsight: "Complete your first workout and your coach will break down what happened, minute by minute.",
