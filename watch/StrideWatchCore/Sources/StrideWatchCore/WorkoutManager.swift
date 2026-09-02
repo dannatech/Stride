@@ -207,11 +207,14 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
         print("[Stride] sendSessionEvent(\(event)) — reachable: \(session.isReachable), activationState: \(session.activationState.rawValue)")
         if session.isReachable {
             session.sendMessage(payload, replyHandler: nil) { error in
-                print("[Stride] sendMessage failed, falling back to context:", error.localizedDescription)
-                try? session.updateApplicationContext(payload)
+                print("[Stride] sendMessage failed, queueing session event:", error.localizedDescription)
+                session.transferUserInfo(payload)
             }
         } else {
-            try? session.updateApplicationContext(payload)
+            // Session events must not share applicationContext with telemetry:
+            // the next RunPacket would overwrite the start/pause/resume/stop
+            // event before the phone had a chance to receive it.
+            session.transferUserInfo(payload)
         }
     }
 
