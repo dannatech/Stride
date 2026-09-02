@@ -424,8 +424,6 @@ function AppShell() {
   trackerRef.current = tracker;
   const onChangeWorkoutTypeRef = useRef(onChangeWorkoutType);
   onChangeWorkoutTypeRef.current = onChangeWorkoutType;
-  const onEndWorkoutRef = useRef(onEndWorkout);
-  onEndWorkoutRef.current = onEndWorkout;
 
   useEffect(() => {
     const unsubscribe = addSessionEventListener(({ event, workoutType }) => {
