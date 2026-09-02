@@ -85,6 +85,7 @@ function AppShell() {
   const [formPresented, setFormPresented] = useState(false);
   const [devicesPresented, setDevicesPresented] = useState(false);
   const [profilePresented, setProfilePresented] = useState(false);
+  const [remoteStopSignal, setRemoteStopSignal] = useState(0);
 
   // Supabase auth: resolve the current session once, then react to sign-in/out.
   useEffect(() => {
@@ -439,7 +440,10 @@ function AppShell() {
       } else if (event === "resume") {
         if (tracker.isTracking && tracker.isPaused) tracker.resume();
       } else if (event === "stop") {
-        if (tracker.isTracking) onEndWorkoutRef.current(null, { notifyWatch: false });
+        if (tracker.isTracking) {
+          if (!tracker.isPaused) tracker.pause();
+          setRemoteStopSignal((signal) => signal + 1);
+        }
       }
     });
     return unsubscribe;
@@ -677,6 +681,7 @@ Context:
               onRequestPermission={tracker.requestPermission}
               onLap={onLap}
               onStopRequested={onPhoneStopRequested}
+              remoteStopSignal={remoteStopSignal}
               onEndWorkout={onFinishPhoneWorkout}
             />
           )}
