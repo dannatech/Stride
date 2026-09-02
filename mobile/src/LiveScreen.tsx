@@ -55,6 +55,7 @@ interface LiveScreenProps {
   onRequestPermission: () => void;
   onLap: () => void;
   onStopRequested: () => void;
+  remoteStopSignal: number;
   onEndWorkout: (rpe: number | null) => void;
 }
 
@@ -90,6 +91,7 @@ export function LiveScreen({
   onRequestPermission,
   onLap,
   onStopRequested,
+  remoteStopSignal,
   onEndWorkout,
 }: LiveScreenProps) {
   const cue = cues[Math.floor(elapsedSeconds / 8) % cues.length];
@@ -97,6 +99,15 @@ export function LiveScreen({
   const [confirmingEnd, setConfirmingEnd] = useState(false);
   const [showRpe, setShowRpe] = useState(false);
   const confirmTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // A Watch-initiated stop enters the same completion flow as the phone's
+  // confirmed End Workout button, preserving RPE collection and single-save.
+  useEffect(() => {
+    if (remoteStopSignal === 0) return;
+    if (confirmTimeout.current) clearTimeout(confirmTimeout.current);
+    setConfirmingEnd(false);
+    setShowRpe(true);
+  }, [remoteStopSignal]);
   useEffect(() => () => {
     if (confirmTimeout.current) clearTimeout(confirmTimeout.current);
   }, []);
