@@ -10,6 +10,7 @@ public struct RunPacket {
     public var strideLength: Double       // meters
     public var power: Double              // watts
     public var elapsedSeconds: Double
+    public var workoutState: String
 
     public init(
         pace: Double,
@@ -20,7 +21,8 @@ public struct RunPacket {
         verticalOscillation: Double,
         strideLength: Double,
         power: Double,
-        elapsedSeconds: Double
+        elapsedSeconds: Double,
+        workoutState: String = "running"
     ) {
         self.pace = pace
         self.lat = lat
@@ -31,6 +33,7 @@ public struct RunPacket {
         self.strideLength = strideLength
         self.power = power
         self.elapsedSeconds = elapsedSeconds
+        self.workoutState = workoutState
     }
 
     var asDictionary: [String: Any] {
@@ -44,6 +47,7 @@ public struct RunPacket {
             "strideLength": strideLength,
             "power": power,
             "elapsedSeconds": elapsedSeconds,
+            "workoutState": workoutState,
         ]
     }
 }
