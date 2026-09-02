@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   addRunPacketListener,
+  addSessionEventListener,
   addReachabilityListener,
   isWatchSupported,
   isWatchPaired,
@@ -31,6 +32,12 @@ export interface WatchConnectivityState {
   // reachable AND a packet has arrived recently — the signal to actually
   // trust and display watch data, vs. just "a watch happens to be nearby".
   connected: boolean;
+  // Debug/diagnostic counters — how many of each thing has ever arrived
+  // this app session, and the raw text of the last session event, so a
+  // "nothing is arriving at all" question can be answered by eye.
+  packetCount: number;
+  sessionEventCount: number;
+  lastSessionEvent: string | null;
 }
 
 // WorkoutManager sends roughly every 2s while a run is active; three missed
@@ -47,13 +54,23 @@ export function useWatchConnectivity(): WatchConnectivityState {
   );
   const [lastPacketAt, setLastPacketAt] = useState(0);
   const [now, setNow] = useState(Date.now());
+  const [packetCount, setPacketCount] = useState(0);
+  const [sessionEventCount, setSessionEventCount] = useState(0);
+  const [lastSessionEvent, setLastSessionEvent] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supported) return;
     const unsubPacket = addRunPacketListener((packet: WatchRunPacket) => {
       setLastPacket(packet);
       setLastPacketAt(Date.now());
+      setPacketCount((n) => n + 1);
     });
+    const unsubSessionEvent = addSessionEventListener(
+      (payload: { event: string; workoutType?: string }) => {
+        setSessionEventCount((n) => n + 1);
+        setLastSessionEvent(`${payload.event}${payload.workoutType ? ` (${payload.workoutType})` : ""}`);
+      }
+    );
     const unsubReach = addReachabilityListener(
       (state: { isPaired: boolean; isWatchAppInstalled: boolean; isReachable: boolean }) => {
         setPaired(state.isPaired);
@@ -63,6 +80,7 @@ export function useWatchConnectivity(): WatchConnectivityState {
     );
     return () => {
       unsubPacket();
+      unsubSessionEvent();
       unsubReach();
     };
   }, [supported]);
@@ -77,5 +95,15 @@ export function useWatchConnectivity(): WatchConnectivityState {
 
   const connected = supported && reachable && lastPacketAt > 0 && now - lastPacketAt < STALE_MS;
 
-  return { supported, paired, appInstalled, reachable, lastPacket, connected };
+  return {
+    supported,
+    paired,
+    appInstalled,
+    reachable,
+    lastPacket,
+    connected,
+    packetCount,
+    sessionEventCount,
+    lastSessionEvent,
+  };
 }

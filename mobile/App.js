@@ -468,6 +468,7 @@ Context:
           onBack={() => setDevicesPresented(false)}
           watchPaired={watch.paired}
           watchConnected={watch.connected}
+          watchDebug={watch}
         />
       </ScrollView>
     );

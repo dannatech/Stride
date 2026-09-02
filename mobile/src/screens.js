@@ -1144,7 +1144,7 @@ const DEVICE_TIERS = [
   },
 ];
 
-export function DevicesScreen({ onBack, watchPaired, watchConnected }) {
+export function DevicesScreen({ onBack, watchPaired, watchConnected, watchDebug }) {
   const tiers = DEVICE_TIERS.map((d) => {
     if (d.sources !== "Apple Watch SE / Series 6+") return d;
     if (watchConnected) {
@@ -1191,6 +1191,29 @@ export function DevicesScreen({ onBack, watchPaired, watchConnected }) {
           </View>
         </View>
       ))}
+
+      {watchDebug && (
+        <View style={card({ padding: 16 })}>
+          <Eyebrow color={T.sub}>Watch Debug</Eyebrow>
+          <View style={{ marginTop: 10, gap: 6 }}>
+            {[
+              ["Supported", watchDebug.supported],
+              ["Paired", watchDebug.paired],
+              ["Watch app installed", watchDebug.appInstalled],
+              ["Reachable", watchDebug.reachable],
+              ["Connected (recent packet)", watchDebug.connected],
+              ["Packets received", watchDebug.packetCount],
+              ["Session events received", watchDebug.sessionEventCount],
+              ["Last session event", watchDebug.lastSessionEvent ?? "none"],
+            ].map(([label, value]) => (
+              <View key={label} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: 12, color: T.sub }}>{label}</Text>
+                <Text style={{ fontSize: 12, color: T.ink, fontWeight: "700" }}>{String(value)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
     </View>
   );
 }
