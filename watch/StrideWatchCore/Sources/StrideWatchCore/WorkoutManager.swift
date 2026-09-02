@@ -141,6 +141,10 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
     }
 
     public func stop(notifyPhone: Bool = true) {
+        // Telemetry is the proven Watch-to-phone channel. Send one final
+        // state-bearing packet before ending the HealthKit session so the
+        // phone can stop even if the separate session event is missed.
+        send(currentPacket(workoutState: "stopped"))
         isRunning = false
         isPaused = false
         elapsedTimer?.invalidate()
@@ -182,7 +186,11 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
     private func sendIfDue() {
         guard Date().timeIntervalSince(lastSendDate) >= sendInterval else { return }
         lastSendDate = Date()
-        send(RunPacket(
+        send(currentPacket())
+    }
+
+    private func currentPacket(workoutState: String = "running") -> RunPacket {
+        RunPacket(
             pace: currentPace,
             lat: lastCoordinate?.latitude ?? 0,
             lon: lastCoordinate?.longitude ?? 0,
@@ -191,8 +199,9 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
             verticalOscillation: verticalOscillation,
             strideLength: strideLength,
             power: power,
-            elapsedSeconds: elapsedSeconds
-        ))
+            elapsedSeconds: elapsedSeconds,
+            workoutState: workoutState
+        )
     }
 
     // Sent immediately (not throttled like telemetry) so the phone can mirror
@@ -238,7 +247,11 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
             session.sendMessage(payload, replyHandler: nil) { _ in
                 try? session.updateApplicationContext(payload)
             }
-        } else {
+        }
+        if packet.workoutState == "stopped" {
+            session.transferUserInfo(payload)
+            try? session.updateApplicationContext(payload)
+        } else if !session.isReachable {
             try? session.updateApplicationContext(payload)
         }
     }

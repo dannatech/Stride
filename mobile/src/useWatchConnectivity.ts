@@ -21,6 +21,7 @@ export interface WatchRunPacket {
   strideLength: number; // meters
   power: number; // watts
   elapsedSeconds: number;
+  workoutState?: "running" | "stopped";
 }
 
 export interface WatchConnectivityState {

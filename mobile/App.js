@@ -457,6 +457,15 @@ function AppShell() {
     // immediate sendMessage delivery is available; application-context
     // telemetry can still arrive while it is false.
     if (watch.packetCount > 0 && watch.lastPacket) {
+      if (watch.lastPacket.workoutState === "stopped") {
+        const tracker = trackerRef.current;
+        if (tracker.isTracking) {
+          tracker.syncElapsed(watch.lastPacket.elapsedSeconds);
+          if (!tracker.isPaused) tracker.pause();
+          setRemoteStopSignal((signal) => signal + 1);
+        }
+        return;
+      }
       if (!trackerRef.current.isTracking) {
         trackerRef.current.start();
         setActiveTab("live");
