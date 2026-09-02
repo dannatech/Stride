@@ -41,17 +41,25 @@ final class WatchReceiver: NSObject, WCSessionDelegate {
               ["pause", "resume", "stop"].contains(command) else { return false }
 
         let session = WCSession.default
-        let payload: [String: Any] = ["phoneCommand": command]
+        let payload: [String: Any] = [
+            "phoneCommand": command,
+            "commandID": UUID().uuidString,
+            "commandSentAt": Date().timeIntervalSince1970,
+        ]
+        print("[StrideWatchConnectivity] sending phone command:", command,
+              "reachable:", session.isReachable,
+              "activationState:", session.activationState.rawValue)
 
+        // Stop is safety-critical and idempotent. Send it immediately when
+        // possible, but also queue it and preserve it as latest state. A
+        // nominally reachable WCSession can still lose an unacknowledged
+        // message while either app is transitioning screens.
         if session.isReachable {
             session.sendMessage(payload, replyHandler: nil) { error in
-                print("[StrideWatchConnectivity] phone command send failed; queueing:", error.localizedDescription)
-                session.transferUserInfo(payload)
-                try? session.updateApplicationContext(payload)
+                print("[StrideWatchConnectivity] phone command send failed:", error.localizedDescription)
             }
-        } else {
-            // Use both queued delivery and latest-state context. This makes a
-            // stop command reliable when immediate messaging is unavailable.
+        }
+        if command == "stop" || !session.isReachable {
             session.transferUserInfo(payload)
             try? session.updateApplicationContext(payload)
         }
