@@ -640,13 +640,7 @@ Context:
               history={history}
               todayStats={todayStats}
               weekBars={weekBars}
-              dataSourceLabel={
-                history[0]?.groundContactTime > 0 || history[0]?.verticalOscillation > 0
-                  ? "Supabase · Apple Watch + GPS"
-                  : history.length
-                    ? "Supabase · Phone GPS"
-                    : "Supabase · No workouts yet"
-              }
+              dataSourceLabel="Connected Device"
               onSignOut={onSignOut}
             />
           )}
