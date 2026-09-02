@@ -358,6 +358,20 @@ function AppShell() {
     }
   }, [watch.connected]);
 
+  // Mirror of the auto-start fallback above, for the opposite transition:
+  // once telemetry has been flowing and then goes quiet (watch.connected
+  // true -> false, whichever button on the watch caused it), end and save
+  // the phone's workout too rather than leaving it running forever. This
+  // means pausing on the watch also ends the phone's session — an accepted
+  // tradeoff for reliably stopping when the watch stops.
+  const wasWatchConnectedRef = useRef(false);
+  useEffect(() => {
+    if (wasWatchConnectedRef.current && !watch.connected && trackerRef.current.isTracking) {
+      onEndWorkoutRef.current(null);
+    }
+    wasWatchConnectedRef.current = watch.connected;
+  }, [watch.connected]);
+
   // AI: single call returning all outputs
   const [ai, setAi] = useState(FALLBACK_AI);
   const [aiLoading, setAiLoading] = useState(true);
