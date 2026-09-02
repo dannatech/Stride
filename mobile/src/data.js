@@ -6,6 +6,21 @@ export const SPRINT_GOAL = 10;
 export const TODAY_IDX = new Date().getDay(); // 0=Sun..6=Sat
 export const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
+/* ───────── workout types — picked before starting a Live session ───────── */
+
+// Each type's goalPaceSecPerMile/warmupSeconds are just the defaults applied
+// when switching to that type; the user can still fine-tune both afterward.
+export const WORKOUT_TYPES = {
+  run: { label: "Run", verb: "Run", goalPaceSecPerMile: 480, warmupSeconds: 300 }, // 8:00/mi, 5 min warm-up
+  walk: { label: "Walk", verb: "Walk", goalPaceSecPerMile: 900, warmupSeconds: 60 }, // 15:00/mi, 1 min warm-up
+  sprint: { label: "Sprint", verb: "Sprint", goalPaceSecPerMile: 360, warmupSeconds: 0 }, // 6:00/mi, no ramp-up
+};
+export const WORKOUT_TYPE_ORDER = ["run", "walk", "sprint"];
+
+// Rows saved before the workout_type column existed default to "run" server-side
+// (see the migration), but guard here too in case a row is ever missing it.
+export const filterRunsByType = (runs, type) => runs.filter((r) => (r.workout_type ?? "run") === type);
+
 export const MAX_HR = 190; // ≈ 220 - age(30), used for HR-zone breathing guidance
 
 export const HR_ZONES = [
@@ -27,6 +42,24 @@ export const CORE_EXERCISES = [
 export const CORE_GOAL = CORE_EXERCISES.length;
 
 export const CORE_HISTORY = []; // { date, completed, totalReps, holdSec } — core sessions aren't persisted yet
+
+/* ───────── profile (sex + birthdate, local-only for now — gates the Cycle card) ───────── */
+
+export const SEX_OPTIONS = [
+  { value: "female", label: "Female" },
+  { value: "male", label: "Male" },
+  { value: "unspecified", label: "Prefer not to say" },
+];
+
+export const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+// A wide-enough range for a birth year picker — "all" years a real user could
+// plausibly have been born in, not just the last few.
+export const BIRTH_YEAR_MIN = new Date().getFullYear() - 100;
+export const BIRTH_YEAR_MAX = new Date().getFullYear() - 5;
 
 /* ───────── derive run analytics from persisted `runs` rows (see supabase/migrations) ─────────
    Each row: { created_at, distance_mi, duration_sec, avg_pace_sec, sprints, avg_hr,

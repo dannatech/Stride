@@ -22,10 +22,14 @@ import {
   deriveConfidence,
   deriveTodayStats,
   deriveWeekBars,
+  filterRunsByType,
+  WORKOUT_TYPES,
 } from "./src/data";
 import { TabBar } from "./src/components";
 import { supabase } from "./src/supabaseClient";
 import { usePaceTracker, simulatedVitals } from "./src/usePaceTracker";
+import { useWatchConnectivity } from "./src/useWatchConnectivity";
+import { addSessionEventListener } from "./modules/stride-watch-connectivity";
 import { LiveScreen } from "./src/LiveScreen";
 import {
   Splash,
@@ -41,10 +45,18 @@ import {
   TrainingLoadScreen,
   FormScreen,
   DevicesScreen,
+  ProfileScreen,
 } from "./src/screens";
 
 const PACE_SETTINGS_KEY = "stride.paceSettings.v1";
-const DEFAULT_PACE_SETTINGS = { goalPaceSecPerMile: 480, warmupSeconds: 300 }; // 8:00/mi, 5 min warm-up
+const DEFAULT_PACE_SETTINGS = {
+  workoutType: "run",
+  goalPaceSecPerMile: WORKOUT_TYPES.run.goalPaceSecPerMile,
+  warmupSeconds: WORKOUT_TYPES.run.warmupSeconds,
+};
+
+const PROFILE_KEY = "stride.profile.v1";
+const DEFAULT_PROFILE = { sex: null, birthMonth: null, birthYear: null };
 
 function AppShell() {
   const insets = useSafeAreaInsets();
@@ -57,6 +69,7 @@ function AppShell() {
   const [trainingLoadPresented, setTrainingLoadPresented] = useState(false);
   const [formPresented, setFormPresented] = useState(false);
   const [devicesPresented, setDevicesPresented] = useState(false);
+  const [profilePresented, setProfilePresented] = useState(false);
 
   // Supabase auth: resolve the current session once, then react to sign-in/out.
   useEffect(() => {
@@ -106,15 +119,26 @@ function AppShell() {
     if (authState === "app") fetchRuns();
   }, [authState, fetchRuns]);
 
+  // Unfiltered — Summary, AI Coach context, and Achievements care about all
+  // activity regardless of type, not whatever the Pace/History trend filter
+  // below happens to be set to.
   const history = useMemo(() => deriveHistory(runs), [runs]);
-  const monthlyHistory = useMemo(() => deriveMonthlyHistory(runs), [runs]);
   const vo2History = useMemo(() => deriveVO2MaxHistory(runs), [runs]);
-  const vo2Labels = useMemo(() => deriveVO2MaxLabels(runs), [runs]);
   const streaks = useMemo(() => deriveStreaks(runs), [runs]);
   const confidenceScore = useMemo(() => deriveConfidence(runs), [runs]);
   const todayStats = useMemo(() => deriveTodayStats(runs), [runs]);
   const weekBars = useMemo(() => deriveWeekBars(runs), [runs]);
-  const latestRun = history[0];
+
+  // Pace/History trend charts are scoped to one workout type at a time —
+  // mixing, say, a 15:00/mi walk into a running pace/VO2max trend would read
+  // as a huge, meaningless outlier.
+  const [trendType, setTrendType] = useState("run");
+  const trendRuns = useMemo(() => filterRunsByType(runs, trendType), [runs, trendType]);
+  const trendHistory = useMemo(() => deriveHistory(trendRuns), [trendRuns]);
+  const trendMonthlyHistory = useMemo(() => deriveMonthlyHistory(trendRuns), [trendRuns]);
+  const trendVo2History = useMemo(() => deriveVO2MaxHistory(trendRuns), [trendRuns]);
+  const trendVo2Labels = useMemo(() => deriveVO2MaxLabels(trendRuns), [trendRuns]);
+  const trendLatestRun = trendHistory[0];
 
   const [cycleDay, setCycleDay] = useState(1);
   const cycleLength = 28;
@@ -161,6 +185,27 @@ function AppShell() {
     [holdElapsed]
   );
 
+  // Local-only profile — currently just gates the Cycle card on sex. No
+  // Supabase table for this yet, same tier as paceSettings below.
+  const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  useEffect(() => {
+    AsyncStorage.getItem(PROFILE_KEY).then((raw) => {
+      if (!raw) return;
+      try {
+        setProfile((p) => ({ ...p, ...JSON.parse(raw) }));
+      } catch {
+        // ignore corrupt settings, keep defaults
+      }
+    });
+  }, []);
+  const updateProfile = useCallback((patch) => {
+    setProfile((p) => {
+      const next = { ...p, ...patch };
+      AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   // Real GPS-tracked live run (see src/usePaceTracker). Lifted to AppShell — not the
   // Live screen itself — so tracking keeps running if the user switches tabs mid-run.
   const [paceSettings, setPaceSettings] = useState(DEFAULT_PACE_SETTINGS);
@@ -181,10 +226,34 @@ function AppShell() {
       return next;
     });
   }, []);
+  // Switching type resets pace/warm-up to that type's defaults; the user can
+  // still fine-tune both afterward with the existing +/- steppers.
+  const onChangeWorkoutType = useCallback(
+    (type) => {
+      const preset = WORKOUT_TYPES[type];
+      updatePaceSettings({ workoutType: type, goalPaceSecPerMile: preset.goalPaceSecPerMile, warmupSeconds: preset.warmupSeconds });
+    },
+    [updatePaceSettings]
+  );
 
   const tracker = usePaceTracker(paceSettings.goalPaceSecPerMile, paceSettings.warmupSeconds);
-  const { cadence, hr } = simulatedVitals(tracker.elapsedSeconds);
   const speedMph = tracker.currentPace > 0 ? 3600 / tracker.currentPace : tracker.targetPace > 0 ? 3600 / tracker.targetPace : 0;
+
+  // Apple Watch companion (see watch/StrideWatchApp): the phone stays the
+  // source of truth for GPS distance/pace/session state, but a connected
+  // watch has real HealthKit heart rate + running-dynamics sensors the phone
+  // doesn't, so we prefer its numbers whenever it's actively streaming.
+  const watch = useWatchConnectivity();
+  const { cadence, hr: simulatedHr } = simulatedVitals(tracker.elapsedSeconds);
+  const hr = watch.connected && watch.lastPacket ? watch.lastPacket.heartRate : simulatedHr;
+  const watchMetrics =
+    watch.connected && watch.lastPacket
+      ? {
+          groundContactTime: watch.lastPacket.groundContactTime,
+          verticalOscillation: watch.lastPacket.verticalOscillation,
+          power: watch.lastPacket.power,
+        }
+      : null;
 
   const [sprintIdx, setSprintIdx] = useState(0);
   const [laps, setLaps] = useState([]);
@@ -223,6 +292,7 @@ function AppShell() {
         const { data, error } = await supabase
           .from("runs")
           .insert({
+            workout_type: paceSettings.workoutType,
             distance_mi: distanceMi,
             duration_sec: tracker.elapsedSeconds,
             avg_pace_sec: Math.round(tracker.elapsedSeconds / distanceMi),
@@ -242,8 +312,51 @@ function AppShell() {
       onResetRun();
       setActiveTab("summary");
     },
-    [tracker, sprintIdx, cadence, hr, speedMph, onResetRun]
+    [tracker, sprintIdx, cadence, hr, speedMph, onResetRun, paceSettings.workoutType]
   );
+
+  // Mirror the watch's Start/Pause/Resume/Stop on the phone's own tracker —
+  // the watch is the controller here, the phone just follows so its GPS
+  // session (and the eventual Supabase save) actually runs alongside it.
+  // Latest-value refs so the listener below can subscribe exactly once (native
+  // event subscriptions are not free to tear down/recreate) while still
+  // always acting on current tracker/callback state.
+  const trackerRef = useRef(tracker);
+  trackerRef.current = tracker;
+  const onChangeWorkoutTypeRef = useRef(onChangeWorkoutType);
+  onChangeWorkoutTypeRef.current = onChangeWorkoutType;
+  const onEndWorkoutRef = useRef(onEndWorkout);
+  onEndWorkoutRef.current = onEndWorkout;
+
+  useEffect(() => {
+    const unsubscribe = addSessionEventListener(({ event, workoutType }) => {
+      console.log("[watch] session event received:", event, workoutType);
+      const tracker = trackerRef.current;
+      if (event === "start") {
+        if (workoutType && WORKOUT_TYPES[workoutType]) onChangeWorkoutTypeRef.current(workoutType);
+        if (!tracker.isTracking) tracker.start();
+        setActiveTab("live");
+      } else if (event === "pause") {
+        if (tracker.isTracking && !tracker.isPaused) tracker.pause();
+      } else if (event === "resume") {
+        if (tracker.isTracking && tracker.isPaused) tracker.resume();
+      } else if (event === "stop") {
+        if (tracker.isTracking) onEndWorkoutRef.current(null);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  // Fallback (and in practice, primary) start trigger: the moment real
+  // telemetry packets start arriving from the watch, a run is definitely
+  // active — this reuses the already-working RunPacket channel instead of
+  // depending solely on the separate sessionEvent signal above.
+  useEffect(() => {
+    if (watch.connected && !trackerRef.current.isTracking) {
+      trackerRef.current.start();
+      setActiveTab("live");
+    }
+  }, [watch.connected]);
 
   // AI: single call returning all outputs
   const [ai, setAi] = useState(FALLBACK_AI);
@@ -351,7 +464,24 @@ Context:
   else if (devicesPresented)
     body = (
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
-        <DevicesScreen onBack={() => setDevicesPresented(false)} />
+        <DevicesScreen
+          onBack={() => setDevicesPresented(false)}
+          watchPaired={watch.paired}
+          watchConnected={watch.connected}
+          watchDebug={watch}
+        />
+      </ScrollView>
+    );
+  else if (profilePresented)
+    body = (
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 30 }}>
+        <ProfileScreen
+          profile={profile}
+          onChangeSex={(v) => updateProfile({ sex: v })}
+          onChangeBirthMonth={(v) => updateProfile({ birthMonth: v })}
+          onChangeBirthYear={(v) => updateProfile({ birthYear: v })}
+          onBack={() => setProfilePresented(false)}
+        />
       </ScrollView>
     );
   else
@@ -364,6 +494,7 @@ Context:
               aiLoading={aiLoading}
               onRegenerate={fetchAi}
               readiness={readiness}
+              sex={profile.sex}
               cycleDay={cycleDay}
               cycleLength={cycleLength}
               openCycle={() => setCyclePresented(true)}
@@ -372,6 +503,7 @@ Context:
               openTrainingLoad={() => setTrainingLoadPresented(true)}
               openForm={() => setFormPresented(true)}
               openDevices={() => setDevicesPresented(true)}
+              openProfile={() => setProfilePresented(true)}
               achievementCtx={achievementContext({ readiness, coreCompleted, history, streaks, confidence: confidenceScore })}
               history={history}
               todayStats={todayStats}
@@ -395,10 +527,14 @@ Context:
               cadence={cadence}
               hr={hr}
               speedMph={speedMph}
+              watchConnected={watch.connected}
+              watchMetrics={watchMetrics}
               sprintIdx={sprintIdx}
               laps={laps}
+              workoutType={paceSettings.workoutType}
               goalPaceSecPerMile={paceSettings.goalPaceSecPerMile}
               warmupSeconds={paceSettings.warmupSeconds}
+              onChangeWorkoutType={onChangeWorkoutType}
               onChangeGoalPace={(v) => updatePaceSettings({ goalPaceSecPerMile: v })}
               onChangeWarmup={(v) => updatePaceSettings({ warmupSeconds: v })}
               onStart={tracker.start}
@@ -424,13 +560,22 @@ Context:
           )}
           {activeTab === "pace" && (
             <Pace
-              paceMinutes={latestRun?.paceMinutes || []}
-              sprintMinutes={latestRun?.sprintMinutes || new Set()}
-              vo2History={vo2History}
-              vo2Labels={vo2Labels}
+              paceMinutes={trendLatestRun?.paceMinutes || []}
+              sprintMinutes={trendLatestRun?.sprintMinutes || new Set()}
+              vo2History={trendVo2History}
+              vo2Labels={trendVo2Labels}
+              trendType={trendType}
+              onChangeTrendType={setTrendType}
             />
           )}
-          {activeTab === "history" && <History history={history} monthlyHistory={monthlyHistory} />}
+          {activeTab === "history" && (
+            <History
+              history={trendHistory}
+              monthlyHistory={trendMonthlyHistory}
+              trendType={trendType}
+              onChangeTrendType={setTrendType}
+            />
+          )}
           {activeTab === "coach" && <Coach ai={ai} aiLoading={aiLoading} />}
         </ScrollView>
         <TabBar active={activeTab} setActive={setActiveTab} bottomInset={insets.bottom} />

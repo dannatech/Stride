@@ -4,19 +4,32 @@ import CoreLocation
 import HealthKit
 import WatchConnectivity
 
+// Mirrors the phone's WORKOUT_TYPES (mobile/src/data.js) — HealthKit has no
+// distinct "sprint" activity type, so sprint maps to .running same as run.
+public enum WatchWorkoutType: String {
+    case run
+    case walk
+    case sprint
+
+    var hkActivityType: HKWorkoutActivityType {
+        self == .walk ? .walking : .running
+    }
+}
+
 @MainActor
-final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
-    @Published var isRunning = false
-    @Published var isPaused = false
-    @Published var elapsedSeconds: TimeInterval = 0
-    @Published var currentPace: Double = 0
-    @Published var heartRate: Double = 0
-    @Published var groundContactTime: Double = 0
-    @Published var verticalOscillation: Double = 0
-    @Published var strideLength: Double = 0
-    @Published var power: Double = 0
-    @Published var authorizationError: String?
-    @Published var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
+public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
+    @Published public var isRunning = false
+    @Published public var isPaused = false
+    @Published public var elapsedSeconds: TimeInterval = 0
+    @Published public var distanceMiles: Double = 0
+    @Published public var currentPace: Double = 0
+    @Published public var heartRate: Double = 0
+    @Published public var groundContactTime: Double = 0
+    @Published public var verticalOscillation: Double = 0
+    @Published public var strideLength: Double = 0
+    @Published public var power: Double = 0
+    @Published public var authorizationError: String?
+    @Published public var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
 
     private let healthStore = HKHealthStore()
     private let locationManager = CLLocationManager()
@@ -32,13 +45,19 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
     private var liveBuilder: HKLiveWorkoutBuilder?
     private var routeBuilder: HKWorkoutRouteBuilder?
     private var lastCoordinate: CLLocationCoordinate2D?
+    // Only call finishRoute if at least one location was actually inserted —
+    // calling it with zero route data is what triggers the "no data was added
+    // to the workout route" failure (an app-level error before, but this also
+    // avoids whatever the OS itself does with that failure internally).
+    private var hasRouteData = false
 
     private var startDate: Date?
     private var elapsedTimer: Timer?
     private var lastSendDate: Date = .distantPast
     private let sendInterval: TimeInterval = 2
+    private var currentType: WatchWorkoutType = .run
 
-    override init() {
+    public override init() {
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
@@ -63,11 +82,12 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
 
-    func start() {
+    public func start(type: WatchWorkoutType = .run) {
         requestAuthorization()
+        currentType = type
 
         let configuration = HKWorkoutConfiguration()
-        configuration.activityType = .running
+        configuration.activityType = type.hkActivityType
         configuration.locationType = .outdoor
 
         do {
@@ -90,48 +110,53 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
 
             startDate = now
             paceCalculator.reset()
+            distanceMiles = 0
+            currentPace = 0
+            hasRouteData = false
             isRunning = true
             isPaused = false
 
             locationManager.requestWhenInUseAuthorization()
             locationManager.startUpdatingLocation()
             startElapsedTimer()
+            sendSessionEvent("start", workoutType: type)
         } catch {
             authorizationError = error.localizedDescription
         }
     }
 
-    func pause() {
+    public func pause() {
         isPaused = true
         locationManager.stopUpdatingLocation()
         elapsedTimer?.invalidate()
+        sendSessionEvent("pause")
     }
 
-    func resume() {
+    public func resume() {
         isPaused = false
         locationManager.startUpdatingLocation()
         startElapsedTimer()
+        sendSessionEvent("resume")
     }
 
-    func stop() {
+    public func stop() {
         isRunning = false
         isPaused = false
         elapsedTimer?.invalidate()
         locationManager.stopUpdatingLocation()
+        sendSessionEvent("stop")
 
         guard let session = workoutSession, let builder = liveBuilder else { return }
-        let routeBuilderToFinish = routeBuilder // capture before clearing below
+        // Capture before clearing below; only actually finish the route if we
+        // ever inserted a location into it — finishing an empty route is what
+        // produces the "no data was added to the workout route" failure.
+        let routeBuilderToFinish = hasRouteData ? routeBuilder : nil
 
         session.end()
-        builder.endCollection(withEnd: Date()) { [weak self] _, _ in
+        builder.endCollection(withEnd: Date()) { _, _ in
             builder.finishWorkout { workout, _ in
-                guard let workout else { return }
-                routeBuilderToFinish?.finishRoute(with: workout, metadata: nil) { _, error in
-                    guard let error else { return }
-                    Task { @MainActor in
-                        self?.authorizationError = error.localizedDescription
-                    }
-                }
+                guard let workout, let routeBuilderToFinish else { return }
+                routeBuilderToFinish.finishRoute(with: workout, metadata: nil) { _, _ in }
             }
         }
 
@@ -147,6 +172,7 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
                 guard let self, let startDate = self.startDate, self.isRunning, !self.isPaused else { return }
                 self.elapsedSeconds = Date().timeIntervalSince(startDate)
                 self.currentPace = self.paceCalculator.currentPace
+                self.distanceMiles = self.paceCalculator.distanceMiles
                 self.sendIfDue()
             }
         }
@@ -168,6 +194,27 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
         ))
     }
 
+    // Sent immediately (not throttled like telemetry) so the phone can mirror
+    // Start/Pause/Resume/Stop as soon as they happen on the watch.
+    private func sendSessionEvent(_ event: String, workoutType: WatchWorkoutType? = nil) {
+        guard WCSession.isSupported() else {
+            print("[Stride] sendSessionEvent(\(event)): WCSession not supported")
+            return
+        }
+        let session = WCSession.default
+        var payload: [String: Any] = ["sessionEvent": event]
+        if let workoutType { payload["workoutType"] = workoutType.rawValue }
+        print("[Stride] sendSessionEvent(\(event)) — reachable: \(session.isReachable), activationState: \(session.activationState.rawValue)")
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil) { error in
+                print("[Stride] sendMessage failed, falling back to context:", error.localizedDescription)
+                try? session.updateApplicationContext(payload)
+            }
+        } else {
+            try? session.updateApplicationContext(payload)
+        }
+    }
+
     private func send(_ packet: RunPacket) {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
@@ -183,34 +230,37 @@ final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendable {
 }
 
 extension WorkoutManager: CLLocationManagerDelegate {
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    nonisolated public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
         Task { @MainActor in
             self.lastCoordinate = location.coordinate
             self.paceCalculator.ingest(location)
-            self.routeBuilder?.insertRouteData([location]) { _, _ in }
+            self.routeBuilder?.insertRouteData([location]) { [weak self] success, _ in
+                guard success else { return }
+                Task { @MainActor in self?.hasRouteData = true }
+            }
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    nonisolated public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Task { @MainActor in self.authorizationError = error.localizedDescription }
     }
 
-    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    nonisolated public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
         Task { @MainActor in self.locationAuthorizationStatus = status }
     }
 }
 
 extension WorkoutManager: HKWorkoutSessionDelegate {
-    nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didChangeTo toState: HKWorkoutSessionState, from fromState: HKWorkoutSessionState, date: Date) {}
-    nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
+    nonisolated public func workoutSession(_ workoutSession: HKWorkoutSession, didChangeTo toState: HKWorkoutSessionState, from fromState: HKWorkoutSessionState, date: Date) {}
+    nonisolated public func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
         Task { @MainActor in self.authorizationError = error.localizedDescription }
     }
 }
 
 extension WorkoutManager: HKLiveWorkoutBuilderDelegate {
-    nonisolated func workoutBuilder(_ workoutBuilder: HKLiveWorkoutBuilder, didCollectDataOf collectedTypes: Set<HKSampleType>) {
+    nonisolated public func workoutBuilder(_ workoutBuilder: HKLiveWorkoutBuilder, didCollectDataOf collectedTypes: Set<HKSampleType>) {
         for type in collectedTypes {
             guard let quantityType = type as? HKQuantityType,
                   let statistics = workoutBuilder.statistics(for: quantityType) else { continue }
@@ -234,9 +284,11 @@ extension WorkoutManager: HKLiveWorkoutBuilderDelegate {
         }
     }
 
-    nonisolated func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {}
+    nonisolated public func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {}
 }
 
 extension WorkoutManager: WCSessionDelegate {
-    nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
+    nonisolated public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        print("[Stride] WCSession activation completed — state: \(activationState.rawValue), error: \(error?.localizedDescription ?? "none")")
+    }
 }

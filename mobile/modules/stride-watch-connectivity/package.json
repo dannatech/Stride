@@ -1,0 +1,9 @@
+{
+  "name": "stride-watch-connectivity",
+  "version": "1.0.0",
+  "description": "WatchConnectivity receiver — streams live run telemetry from the Stride watchOS companion app into the iPhone app",
+  "main": "index.js",
+  "author": "Stride",
+  "license": "UNLICENSED",
+  "private": true
+}

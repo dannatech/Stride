@@ -389,38 +389,38 @@ function Chevron({ dir = "right", color = T.sub, size = 12 }) {
   );
 }
 
-function RunningLegs({ size = 90, color = T.accent1 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 100">
-      <g style={{ transformOrigin: "50px 36px", animation: "legSwingBack 0.64s ease-in-out infinite" }}>
-        <path d="M50 36 L38 68 L30 94 L42 94 L52 68 L56 36 Z" fill={color} opacity={0.5} />
-      </g>
-      <g style={{ transformOrigin: "50px 36px", animation: "legSwingFront 0.64s ease-in-out infinite" }}>
-        <path d="M50 36 L62 68 L70 94 L58 94 L48 68 L44 36 Z" fill={color} />
-      </g>
-      <circle cx="50" cy="22" r="10" fill={color} />
-    </svg>
-  );
-}
+// Same two-footprint silhouette used for the app icon (see the icon source's
+// FOOT_PATH) — natural bbox x 22..78, y 4..132, centered at (50, 68). The icon
+// was rendered on a 1024px canvas at scale 3.1; keep the glyph the same
+// proportion of the frame at any size.
+const FOOT_PATH =
+  "M 50 4 C 68 4 78 18 78 32 C 78 46 68 54 62 62 C 58 67 58 72 62 78 " +
+  "C 70 88 76 96 76 108 C 76 122 64 132 50 132 C 36 132 24 122 24 108 " +
+  "C 24 96 30 88 38 78 C 42 72 42 67 38 62 C 32 54 22 46 22 32 C 22 18 32 4 50 4 Z";
+const FOOT_SPREAD = 0.065;
+const FOOT_SCALE = (3.1 / 1024) * 100;
 
-function Logomark({ size = 72, radius = 22, fontSize = 32 }) {
+function RunningLegs({ size = 90, color = T.accent1 }) {
+  const scale = (size * FOOT_SCALE) / 100;
+  const gapX = size * FOOT_SPREAD;
+  const gapY = size * FOOT_SPREAD * 0.55;
+  const cx = size / 2;
+  const cy = size / 2;
   return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: radius,
-        background: `linear-gradient(135deg, ${T.accent1}, ${T.accent2})`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#fff",
-        fontWeight: 700,
-        fontSize,
-      }}
-    >
-      S
-    </div>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <g
+        transform={`translate(${cx - gapX},${cy + gapY}) rotate(-9) scale(${scale}) translate(-50,-68)`}
+        style={{ animation: "footPulseBack 1.1s ease-in-out infinite" }}
+      >
+        <path d={FOOT_PATH} fill={color} />
+      </g>
+      <g
+        transform={`translate(${cx + gapX},${cy - gapY}) rotate(9) scale(${scale}) translate(-50,-68)`}
+        style={{ animation: "footPulseFront 1.1s ease-in-out infinite" }}
+      >
+        <path d={FOOT_PATH} fill={color} />
+      </g>
+    </svg>
   );
 }
 
@@ -658,7 +658,7 @@ function Login({ onSignIn, onSignUp }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 28px", gap: 14 }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginBottom: 14 }}>
         <div style={{ marginBottom: 12 }}>
-          <Logomark size={56} radius={18} fontSize={24} />
+          <RunningLegs />
         </div>
         <div style={{ fontSize: 20, fontWeight: 700, color: T.ink, whiteSpace: "nowrap" }}>
           {mode === "signin" ? "Welcome back" : "Create your account"}
@@ -2486,8 +2486,8 @@ Context:
       >
         <style>{`
           @keyframes breathePulse { 0%, 100% { transform: scale(0.65); opacity: 0.5; } 50% { transform: scale(1); opacity: 1; } }
-          @keyframes legSwingFront { 0%, 100% { transform: rotate(-30deg); } 50% { transform: rotate(30deg); } }
-          @keyframes legSwingBack { 0%, 100% { transform: rotate(30deg); } 50% { transform: rotate(-30deg); } }
+          @keyframes footPulseFront { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+          @keyframes footPulseBack { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
         `}</style>
         {body}
       </div>

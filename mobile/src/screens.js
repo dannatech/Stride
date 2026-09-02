@@ -24,8 +24,14 @@ import {
   estimateTSS,
   computeACWR,
   confidenceBreakdown,
+  WORKOUT_TYPES,
+  WORKOUT_TYPE_ORDER,
+  SEX_OPTIONS,
+  MONTH_NAMES,
+  BIRTH_YEAR_MIN,
+  BIRTH_YEAR_MAX,
 } from "./data";
-import { Eyebrow, Chevron, Logomark, RunningLegs, BackHeader, StatCard, ProgressRing, BreathingGuide, CoreExerciseRow, AchievementBadge } from "./components";
+import { Eyebrow, Chevron, RunningLegs, BackHeader, StatCard, ProgressRing, BreathingGuide, CoreExerciseRow, AchievementBadge } from "./components";
 
 /* ───────── Screens ───────── */
 
@@ -84,7 +90,7 @@ export function Login({ onSignIn, onSignUp }) {
     <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 28, gap: 14 }}>
       <View style={{ alignItems: "center", gap: 2, marginBottom: 14 }}>
         <View style={{ marginBottom: 12 }}>
-          <Logomark size={56} radius={18} fontSize={24} />
+          <RunningLegs />
         </View>
         <Text style={{ fontSize: 20, fontWeight: "700", color: T.ink }}>
           {mode === "signin" ? "Welcome back" : "Create your account"}
@@ -143,6 +149,7 @@ export function Summary({
   aiLoading,
   onRegenerate,
   readiness,
+  sex,
   cycleDay,
   cycleLength,
   openCycle,
@@ -151,6 +158,7 @@ export function Summary({
   openTrainingLoad,
   openForm,
   openDevices,
+  openProfile,
   achievementCtx,
   history,
   todayStats,
@@ -174,9 +182,14 @@ export function Summary({
           </Text>
           <Text style={{ fontSize: 22, fontWeight: "700", color: T.ink }}>{greeting}</Text>
         </View>
-        <Pressable onPress={onSignOut} hitSlop={8}>
-          <Text style={{ fontSize: 12, fontWeight: "600", color: T.sub }}>Log Out</Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 14 }}>
+          <Pressable onPress={openProfile} hitSlop={8}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: T.sub }}>Profile</Text>
+          </Pressable>
+          <Pressable onPress={onSignOut} hitSlop={8}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: T.sub }}>Log Out</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={card({ padding: 24 })}>
@@ -205,19 +218,21 @@ export function Summary({
         </View>
       </Pressable>
 
-      <Pressable
-        onPress={openCycle}
-        style={card({ padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" })}
-      >
-        <View>
-          <Eyebrow>Cycle · Day {cycleDay}</Eyebrow>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: T.ink, marginTop: 4 }}>{phase} phase</Text>
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Text style={{ fontSize: 13, color: T.sub }}>Period in {periodIn}d</Text>
-          <Chevron />
-        </View>
-      </Pressable>
+      {sex === "female" && (
+        <Pressable
+          onPress={openCycle}
+          style={card({ padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" })}
+        >
+          <View>
+            <Eyebrow>Cycle · Day {cycleDay}</Eyebrow>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: T.ink, marginTop: 4 }}>{phase} phase</Text>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Text style={{ fontSize: 13, color: T.sub }}>Period in {periodIn}d</Text>
+            <Chevron />
+          </View>
+        </Pressable>
+      )}
 
       <Pressable
         onPress={openAchievements}
@@ -302,7 +317,38 @@ export function Summary({
   );
 }
 
-export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels }) {
+// Shared by Pace and History — scopes their trend charts to one workout type
+// at a time, since a walk's pace/VO2 sitting in a running trend just reads
+// as a meaningless outlier.
+function TrendTypePicker({ trendType, onChangeTrendType }) {
+  return (
+    <View style={{ flexDirection: "row", gap: 8 }}>
+      {WORKOUT_TYPE_ORDER.map((type) => {
+        const active = type === trendType;
+        return (
+          <Pressable
+            key={type}
+            onPress={() => onChangeTrendType(type)}
+            style={{
+              paddingVertical: 7,
+              paddingHorizontal: 16,
+              borderRadius: 999,
+              backgroundColor: active ? T.accent1 : "transparent",
+              borderWidth: active ? 0 : 1.5,
+              borderColor: T.hair,
+            }}
+          >
+            <Text style={{ color: active ? "#fff" : T.sub, fontWeight: "700", fontSize: 12 }}>
+              {WORKOUT_TYPES[type].label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels, trendType, onChangeTrendType }) {
   const hasPace = paceMinutes.length > 0;
   const hasVO2 = vo2History.length > 0;
   const avg = hasPace ? paceMinutes.reduce((a, b) => a + b, 0) / paceMinutes.length : 0;
@@ -314,6 +360,7 @@ export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels }) {
   const vo2Max = hasVO2 ? Math.max(...vo2History) : 0;
   return (
     <View style={{ gap: 16 }}>
+      <TrendTypePicker trendType={trendType} onChangeTrendType={onChangeTrendType} />
       <View>
         <Text style={{ fontSize: 13, color: T.sub }}>Average Pace</Text>
         <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
@@ -357,7 +404,9 @@ export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels }) {
             })}
           </View>
         ) : (
-          <Text style={{ fontSize: 12, color: T.sub, marginTop: 12 }}>Not enough runs yet to estimate VO2max.</Text>
+          <Text style={{ fontSize: 12, color: T.sub, marginTop: 12 }}>
+            Not enough {WORKOUT_TYPES[trendType].label.toLowerCase()}s logged yet to estimate VO2max.
+          </Text>
         )}
       </View>
 
@@ -407,7 +456,7 @@ export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels }) {
       ) : (
         <View style={card({ padding: 16 })}>
           <Text style={{ fontSize: 13, color: T.sub, textAlign: "center" }}>
-            No pace data yet — complete a run to see your minute-by-minute splits here.
+            No pace data yet — complete a {WORKOUT_TYPES[trendType].label.toLowerCase()} to see your minute-by-minute splits here.
           </Text>
         </View>
       )}
@@ -415,8 +464,9 @@ export function Pace({ paceMinutes, sprintMinutes, vo2History, vo2Labels }) {
   );
 }
 
-export function History({ history, monthlyHistory }) {
+export function History({ history, monthlyHistory, trendType, onChangeTrendType }) {
   const [range, setRange] = useState("Weekly");
+  const typeLabel = WORKOUT_TYPES[trendType].label.toLowerCase();
   const deltas = history.slice(0, -1).map((w, i) => ({
     date: w.date,
     delta: w.pace - history[i + 1].pace,
@@ -429,12 +479,14 @@ export function History({ history, monthlyHistory }) {
         <Text style={{ fontSize: 13, color: T.sub }}>Recent workouts</Text>
       </View>
 
+      <TrendTypePicker trendType={trendType} onChangeTrendType={onChangeTrendType} />
+
       <View style={card({ padding: 16 })}>
         <Text style={{ fontSize: 14, fontWeight: "700", color: T.ink }}>Pace Change, Day to Day</Text>
-        <Text style={{ fontSize: 11, color: T.sub, marginBottom: 16 }}>vs. the previous run · faster ↑ slower ↓</Text>
+        <Text style={{ fontSize: 11, color: T.sub, marginBottom: 16 }}>vs. the previous {typeLabel} · faster ↑ slower ↓</Text>
         {deltas.length === 0 ? (
           <Text style={{ fontSize: 13, color: T.sub, textAlign: "center", paddingVertical: 30 }}>
-            Complete at least two runs to see how your pace is trending.
+            Complete at least two {typeLabel}s to see how your pace is trending.
           </Text>
         ) : (
         <View style={{ flexDirection: "row", gap: 10, height: 130 }}>
@@ -489,7 +541,7 @@ export function History({ history, monthlyHistory }) {
       <View style={card({ paddingHorizontal: 16 })}>
         {(range === "Weekly" ? history.length : monthlyHistory.length) === 0 ? (
           <Text style={{ fontSize: 13, color: T.sub, textAlign: "center", paddingVertical: 20 }}>
-            No workouts logged yet. Finish a run to see it here.
+            No {typeLabel}s logged yet. Finish a {typeLabel} to see it here.
           </Text>
         ) : range === "Weekly"
           ? history.map((w, i) => {
@@ -1092,7 +1144,18 @@ const DEVICE_TIERS = [
   },
 ];
 
-export function DevicesScreen({ onBack }) {
+export function DevicesScreen({ onBack, watchPaired, watchConnected, watchDebug }) {
+  const tiers = DEVICE_TIERS.map((d) => {
+    if (d.sources !== "Apple Watch SE / Series 6+") return d;
+    if (watchConnected) {
+      return { ...d, action: "Connected — streaming live", status: "active" };
+    }
+    if (watchPaired) {
+      return { ...d, action: "Paired — open Stride on your watch to start a run", status: "needs-key" };
+    }
+    return d;
+  });
+
   return (
     <View style={{ gap: 16, paddingBottom: 30 }}>
       <BackHeader title="Devices" onBack={onBack} />
@@ -1100,7 +1163,7 @@ export function DevicesScreen({ onBack }) {
         Every metric in this app is only as good as its source. Here's exactly what's powering yours.
       </Text>
 
-      {DEVICE_TIERS.map((d) => (
+      {tiers.map((d) => (
         <View key={d.tier} style={card({ padding: 18, borderLeftWidth: 3, borderLeftColor: d.color })}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <Eyebrow color={d.color}>{d.tier} Tier</Eyebrow>
@@ -1128,6 +1191,100 @@ export function DevicesScreen({ onBack }) {
           </View>
         </View>
       ))}
+
+      {watchDebug && (
+        <View style={card({ padding: 16 })}>
+          <Eyebrow color={T.sub}>Watch Debug</Eyebrow>
+          <View style={{ marginTop: 10, gap: 6 }}>
+            {[
+              ["Supported", watchDebug.supported],
+              ["Paired", watchDebug.paired],
+              ["Watch app installed", watchDebug.appInstalled],
+              ["Reachable", watchDebug.reachable],
+              ["Connected (recent packet)", watchDebug.connected],
+              ["Packets received", watchDebug.packetCount],
+              ["Session events received", watchDebug.sessionEventCount],
+              ["Last session event", watchDebug.lastSessionEvent ?? "none"],
+            ].map(([label, value]) => (
+              <View key={label} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: 12, color: T.sub }}>{label}</Text>
+                <Text style={{ fontSize: 12, color: T.ink, fontWeight: "700" }}>{String(value)}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+export function ProfileScreen({ profile, onChangeSex, onChangeBirthMonth, onChangeBirthYear, onBack }) {
+  const birthMonth = profile.birthMonth ?? new Date().getMonth();
+  const birthYear = profile.birthYear ?? BIRTH_YEAR_MAX;
+
+  return (
+    <View style={{ gap: 16, paddingBottom: 30 }}>
+      <BackHeader title="Profile" onBack={onBack} />
+      <Text style={{ fontSize: 13, color: T.sub }}>
+        Used locally to tailor the app to you — for example, the Cycle card only shows up if you're female.
+      </Text>
+
+      <View style={card({ padding: 16 })}>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: T.ink, marginBottom: 12 }}>Sex</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {SEX_OPTIONS.map((opt) => {
+            const active = opt.value === profile.sex;
+            return (
+              <Pressable
+                key={opt.value}
+                onPress={() => onChangeSex(opt.value)}
+                style={{
+                  paddingVertical: 8,
+                  paddingHorizontal: 16,
+                  borderRadius: 999,
+                  backgroundColor: active ? T.accent1 : "transparent",
+                  borderWidth: active ? 0 : 1.5,
+                  borderColor: T.hair,
+                }}
+              >
+                <Text style={{ color: active ? "#fff" : T.sub, fontWeight: "700", fontSize: 13 }}>{opt.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={card({ padding: 16 })}>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: T.ink, marginBottom: 12 }}>Birthdate</Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ fontSize: 13, color: T.ink }}>Month</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <Pressable onPress={() => onChangeBirthMonth((birthMonth + 11) % 12)} hitSlop={8}>
+              <Text style={{ color: T.accent1, fontSize: 18, fontWeight: "800" }}>−</Text>
+            </Pressable>
+            <Text style={{ color: T.ink, fontWeight: "700", fontSize: 14, minWidth: 96, textAlign: "center" }}>
+              {MONTH_NAMES[birthMonth]}
+            </Text>
+            <Pressable onPress={() => onChangeBirthMonth((birthMonth + 1) % 12)} hitSlop={8}>
+              <Text style={{ color: T.accent1, fontSize: 18, fontWeight: "800" }}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14 }}>
+          <Text style={{ fontSize: 13, color: T.ink }}>Year</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <Pressable onPress={() => onChangeBirthYear(Math.max(BIRTH_YEAR_MIN, birthYear - 1))} hitSlop={8}>
+              <Text style={{ color: T.accent1, fontSize: 18, fontWeight: "800" }}>−</Text>
+            </Pressable>
+            <Text style={{ color: T.ink, fontWeight: "700", fontSize: 14, minWidth: 64, textAlign: "center" }}>
+              {birthYear}
+            </Text>
+            <Pressable onPress={() => onChangeBirthYear(Math.min(BIRTH_YEAR_MAX, birthYear + 1))} hitSlop={8}>
+              <Text style={{ color: T.accent1, fontSize: 18, fontWeight: "800" }}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
     </View>
   );
 }

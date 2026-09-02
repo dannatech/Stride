@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { View, Text, Pressable, Linking } from "react-native";
 import { T, card } from "./theme";
 import { Eyebrow, BreathingGuide, StatCard } from "./components";
-import { SPRINT_GOAL, estimateVO2, fmtClock, fmtPace } from "./data";
+import { SPRINT_GOAL, WORKOUT_TYPES, WORKOUT_TYPE_ORDER, estimateVO2, fmtClock, fmtPace } from "./data";
 import type { PaceStatus } from "./usePaceTracker";
 
 const STATUS_COLOR: Record<PaceStatus, string> = {
@@ -38,10 +38,14 @@ interface LiveScreenProps {
   cadence: number;
   hr: number;
   speedMph: number;
+  watchConnected: boolean;
+  watchMetrics: { groundContactTime: number; verticalOscillation: number; power: number } | null;
   sprintIdx: number;
   laps: number[];
+  workoutType: string;
   goalPaceSecPerMile: number;
   warmupSeconds: number;
+  onChangeWorkoutType: (type: string) => void;
   onChangeGoalPace: (v: number) => void;
   onChangeWarmup: (v: number) => void;
   onStart: () => void;
@@ -68,10 +72,14 @@ export function LiveScreen({
   cadence,
   hr,
   speedMph,
+  watchConnected,
+  watchMetrics,
   sprintIdx,
   laps,
+  workoutType,
   goalPaceSecPerMile,
   warmupSeconds,
+  onChangeWorkoutType,
   onChangeGoalPace,
   onChangeWarmup,
   onStart,
@@ -169,15 +177,40 @@ export function LiveScreen({
   }
 
   if (!isTracking) {
+    const typeVerb = WORKOUT_TYPES[workoutType as keyof typeof WORKOUT_TYPES]?.verb ?? WORKOUT_TYPES.run.verb;
     return (
       <View style={{ gap: 16, alignItems: "center", marginTop: 40 }}>
         <Eyebrow color={T.sub}>Ready</Eyebrow>
         <Text style={{ fontSize: 20, fontWeight: "700", color: T.ink, textAlign: "center" }}>
-          Start your run when you're ready
+          Start your {typeVerb.toLowerCase()} when you're ready
         </Text>
         <Text style={{ fontSize: 12, color: T.sub, textAlign: "center", maxWidth: 260 }}>
           Pace and distance are tracked live via GPS. Set a goal pace and warm-up length below.
         </Text>
+
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {WORKOUT_TYPE_ORDER.map((type) => {
+            const active = type === workoutType;
+            return (
+              <Pressable
+                key={type}
+                onPress={() => onChangeWorkoutType(type)}
+                style={{
+                  paddingVertical: 8,
+                  paddingHorizontal: 18,
+                  borderRadius: 999,
+                  backgroundColor: active ? T.accent1 : "transparent",
+                  borderWidth: active ? 0 : 1.5,
+                  borderColor: T.hair,
+                }}
+              >
+                <Text style={{ color: active ? "#fff" : T.sub, fontWeight: "700", fontSize: 13 }}>
+                  {WORKOUT_TYPES[type as keyof typeof WORKOUT_TYPES].label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
         <View style={card({ padding: 16, width: "100%" })}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -222,7 +255,7 @@ export function LiveScreen({
             justifyContent: "center",
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 17 }}>Start Run</Text>
+          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 17 }}>Start {typeVerb}</Text>
         </Pressable>
       </View>
     );
@@ -234,6 +267,7 @@ export function LiveScreen({
         <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: isPaused ? T.amber : T.accent1 }} />
         <Text style={{ fontSize: 12, fontWeight: "600", color: T.sub }}>
           {isPaused ? "Paused" : "GPS Tracking"}
+          {watchConnected ? " · ⌚ Watch Connected" : ""}
         </Text>
       </View>
 
@@ -297,6 +331,20 @@ export function LiveScreen({
           <StatCard value={signalLost ? "—" : estimateVO2(speedMph).toFixed(1)} label="Est. VO2 (ml/kg/min)" valueColor={T.accent2} />
         </View>
       </View>
+
+      {watchConnected && watchMetrics && (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+          <View style={{ width: "31%" }}>
+            <StatCard value={`${Math.round(watchMetrics.groundContactTime)} ms`} label="Ground Contact" valueColor={T.accent2} />
+          </View>
+          <View style={{ width: "31%" }}>
+            <StatCard value={`${watchMetrics.verticalOscillation.toFixed(1)} cm`} label="Vert. Oscillation" valueColor={T.accent2} />
+          </View>
+          <View style={{ width: "31%" }}>
+            <StatCard value={`${Math.round(watchMetrics.power)} W`} label="Running Power" valueColor={T.accent2} />
+          </View>
+        </View>
+      )}
 
       <View style={{ alignItems: "center" }}>
         <Text style={{ fontSize: 13, fontWeight: "600", color: T.ink, marginBottom: 10 }}>
