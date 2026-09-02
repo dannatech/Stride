@@ -26,6 +26,14 @@ export function getLastRunPacket() {
 }
 
 /**
+ * Sends pause/resume/stop from the phone to the active Watch workout.
+ * Returns true when the command was accepted for immediate or queued delivery.
+ */
+export function sendSessionCommand(command) {
+  return native?.sendSessionCommand(command) ?? false;
+}
+
+/**
  * Fires with a RunPacket-shaped object (see watch/StrideWatchApp/RunPacket.swift)
  * whenever the watch pushes new run telemetry. Returns an unsubscribe function.
  */
