@@ -203,17 +203,23 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
             return
         }
         let session = WCSession.default
-        var payload: [String: Any] = ["sessionEvent": event]
+        var payload: [String: Any] = [
+            "sessionEvent": event,
+            "eventID": UUID().uuidString,
+            "eventSentAt": Date().timeIntervalSince1970,
+        ]
         if let workoutType { payload["workoutType"] = workoutType.rawValue }
         print("[Stride] sendSessionEvent(\(event)) — reachable: \(session.isReachable), activationState: \(session.activationState.rawValue)")
         if session.isReachable {
             session.sendMessage(payload, replyHandler: nil) { error in
-                print("[Stride] sendMessage failed, queueing session event:", error.localizedDescription)
-                session.transferUserInfo(payload)
+                print("[Stride] sendMessage failed for session event:", error.localizedDescription)
             }
-        } else {
-            // Session events must not share applicationContext with telemetry:
-            // the next RunPacket would overwrite start/resume before delivery.
+        }
+
+        // A stop must survive a nominally reachable session dropping its
+        // unacknowledged immediate message. Queue it as well; stop handling on
+        // the phone is idempotent, so duplicate delivery is harmless.
+        if event == "stop" || !session.isReachable {
             session.transferUserInfo(payload)
         }
 
