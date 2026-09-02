@@ -39,7 +39,7 @@ interface LiveScreenProps {
   hr: number;
   speedMph: number;
   watchConnected: boolean;
-  watchMetrics: { groundContactTime: number; verticalOscillation: number; power: number } | null;
+  watchMetrics: { groundContactTime: number; verticalOscillation: number; strideLength: number; power: number } | null;
   sprintIdx: number;
   laps: number[];
   workoutType: string;
@@ -54,6 +54,7 @@ interface LiveScreenProps {
   onReset: () => void;
   onRequestPermission: () => void;
   onLap: () => void;
+  onStopRequested: () => void;
   onEndWorkout: (rpe: number | null) => void;
 }
 
@@ -88,6 +89,7 @@ export function LiveScreen({
   onReset,
   onRequestPermission,
   onLap,
+  onStopRequested,
   onEndWorkout,
 }: LiveScreenProps) {
   const cue = cues[Math.floor(elapsedSeconds / 8) % cues.length];
@@ -107,6 +109,7 @@ export function LiveScreen({
     }
     if (confirmTimeout.current) clearTimeout(confirmTimeout.current);
     setConfirmingEnd(false);
+    onStopRequested();
     setShowRpe(true);
   };
   const finishWithRpe = (rpe: number | null) => {
@@ -334,13 +337,16 @@ export function LiveScreen({
 
       {watchConnected && watchMetrics && (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-          <View style={{ width: "31%" }}>
+          <View style={{ width: "48%" }}>
             <StatCard value={`${Math.round(watchMetrics.groundContactTime)} ms`} label="Ground Contact" valueColor={T.accent2} />
           </View>
-          <View style={{ width: "31%" }}>
+          <View style={{ width: "48%" }}>
             <StatCard value={`${watchMetrics.verticalOscillation.toFixed(1)} cm`} label="Vert. Oscillation" valueColor={T.accent2} />
           </View>
-          <View style={{ width: "31%" }}>
+          <View style={{ width: "48%" }}>
+            <StatCard value={`${watchMetrics.strideLength.toFixed(2)} m`} label="Stride Length" valueColor={T.accent2} />
+          </View>
+          <View style={{ width: "48%" }}>
             <StatCard value={`${Math.round(watchMetrics.power)} W`} label="Running Power" valueColor={T.accent2} />
           </View>
         </View>

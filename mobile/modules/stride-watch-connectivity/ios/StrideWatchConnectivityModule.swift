@@ -31,6 +31,10 @@ public class StrideWatchConnectivityModule: Module {
             WatchReceiver.shared.lastPacket
         }
 
+        Function("sendSessionCommand") { (command: String) -> Bool in
+            WatchReceiver.shared.sendSessionCommand(command)
+        }
+
         OnStartObserving {
             WatchReceiver.shared.onPacket = { [weak self] payload in
                 self?.sendEvent("onRunPacket", payload)

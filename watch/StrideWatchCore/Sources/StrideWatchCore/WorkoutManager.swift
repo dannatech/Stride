@@ -125,26 +125,26 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
         }
     }
 
-    public func pause() {
+    public func pause(notifyPhone: Bool = true) {
         isPaused = true
         locationManager.stopUpdatingLocation()
         elapsedTimer?.invalidate()
-        sendSessionEvent("pause")
+        if notifyPhone { sendSessionEvent("pause") }
     }
 
-    public func resume() {
+    public func resume(notifyPhone: Bool = true) {
         isPaused = false
         locationManager.startUpdatingLocation()
         startElapsedTimer()
-        sendSessionEvent("resume")
+        if notifyPhone { sendSessionEvent("resume") }
     }
 
-    public func stop() {
+    public func stop(notifyPhone: Bool = true) {
         isRunning = false
         isPaused = false
         elapsedTimer?.invalidate()
         locationManager.stopUpdatingLocation()
-        sendSessionEvent("stop")
+        if notifyPhone { sendSessionEvent("stop") }
 
         guard let session = workoutSession, let builder = liveBuilder else { return }
         // Capture before clearing below; only actually finish the route if we
@@ -212,9 +212,14 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
             }
         } else {
             // Session events must not share applicationContext with telemetry:
-            // the next RunPacket would overwrite the start/pause/resume/stop
-            // event before the phone had a chance to receive it.
+            // the next RunPacket would overwrite start/resume before delivery.
             session.transferUserInfo(payload)
+        }
+
+        // No telemetry follows pause/stop, so preserving either as the latest
+        // context provides a fast, idempotent fallback to queued delivery.
+        if event == "pause" || event == "stop" {
+            try? session.updateApplicationContext(payload)
         }
     }
 
@@ -293,5 +298,33 @@ extension WorkoutManager: HKLiveWorkoutBuilderDelegate {
 extension WorkoutManager: WCSessionDelegate {
     nonisolated public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         print("[Stride] WCSession activation completed — state: \(activationState.rawValue), error: \(error?.localizedDescription ?? "none")")
+    }
+
+    nonisolated public func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        receivePhoneCommand(message)
+    }
+
+    nonisolated public func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        receivePhoneCommand(userInfo)
+    }
+
+    nonisolated public func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        receivePhoneCommand(applicationContext)
+    }
+
+    nonisolated private func receivePhoneCommand(_ payload: [String: Any]) {
+        guard let command = payload["phoneCommand"] as? String else { return }
+        Task { @MainActor in
+            switch command {
+            case "pause":
+                if self.isRunning && !self.isPaused { self.pause(notifyPhone: false) }
+            case "resume":
+                if self.isRunning && self.isPaused { self.resume(notifyPhone: false) }
+            case "stop":
+                if self.isRunning { self.stop(notifyPhone: false) }
+            default:
+                break
+            }
+        }
     }
 }
