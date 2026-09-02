@@ -318,10 +318,22 @@ function AppShell() {
   // Mirror the watch's Start/Pause/Resume/Stop on the phone's own tracker —
   // the watch is the controller here, the phone just follows so its GPS
   // session (and the eventual Supabase save) actually runs alongside it.
+  // Latest-value refs so the listener below can subscribe exactly once (native
+  // event subscriptions are not free to tear down/recreate) while still
+  // always acting on current tracker/callback state.
+  const trackerRef = useRef(tracker);
+  trackerRef.current = tracker;
+  const onChangeWorkoutTypeRef = useRef(onChangeWorkoutType);
+  onChangeWorkoutTypeRef.current = onChangeWorkoutType;
+  const onEndWorkoutRef = useRef(onEndWorkout);
+  onEndWorkoutRef.current = onEndWorkout;
+
   useEffect(() => {
     const unsubscribe = addSessionEventListener(({ event, workoutType }) => {
+      console.log("[watch] session event received:", event, workoutType);
+      const tracker = trackerRef.current;
       if (event === "start") {
-        if (workoutType && WORKOUT_TYPES[workoutType]) onChangeWorkoutType(workoutType);
+        if (workoutType && WORKOUT_TYPES[workoutType]) onChangeWorkoutTypeRef.current(workoutType);
         if (!tracker.isTracking) tracker.start();
         setActiveTab("live");
       } else if (event === "pause") {
@@ -329,11 +341,11 @@ function AppShell() {
       } else if (event === "resume") {
         if (tracker.isTracking && tracker.isPaused) tracker.resume();
       } else if (event === "stop") {
-        if (tracker.isTracking) onEndWorkout(null);
+        if (tracker.isTracking) onEndWorkoutRef.current(null);
       }
     });
     return unsubscribe;
-  }, [tracker, onChangeWorkoutType, onEndWorkout]);
+  }, []);
 
   // AI: single call returning all outputs
   const [ai, setAi] = useState(FALLBACK_AI);

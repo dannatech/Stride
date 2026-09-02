@@ -197,12 +197,17 @@ public final class WorkoutManager: NSObject, ObservableObject, @unchecked Sendab
     // Sent immediately (not throttled like telemetry) so the phone can mirror
     // Start/Pause/Resume/Stop as soon as they happen on the watch.
     private func sendSessionEvent(_ event: String, workoutType: WatchWorkoutType? = nil) {
-        guard WCSession.isSupported() else { return }
+        guard WCSession.isSupported() else {
+            print("[Stride] sendSessionEvent(\(event)): WCSession not supported")
+            return
+        }
         let session = WCSession.default
         var payload: [String: Any] = ["sessionEvent": event]
         if let workoutType { payload["workoutType"] = workoutType.rawValue }
+        print("[Stride] sendSessionEvent(\(event)) — reachable: \(session.isReachable), activationState: \(session.activationState.rawValue)")
         if session.isReachable {
-            session.sendMessage(payload, replyHandler: nil) { _ in
+            session.sendMessage(payload, replyHandler: nil) { error in
+                print("[Stride] sendMessage failed, falling back to context:", error.localizedDescription)
                 try? session.updateApplicationContext(payload)
             }
         } else {
@@ -283,5 +288,7 @@ extension WorkoutManager: HKLiveWorkoutBuilderDelegate {
 }
 
 extension WorkoutManager: WCSessionDelegate {
-    nonisolated public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
+    nonisolated public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        print("[Stride] WCSession activation completed — state: \(activationState.rawValue), error: \(error?.localizedDescription ?? "none")")
+    }
 }

@@ -41,6 +41,7 @@ final class WatchReceiver: NSObject, WCSessionDelegate {
             // "sessionEvent" (start/pause/resume/stop, sent immediately) and
             // regular RunPacket telemetry (sent on a throttled interval).
             if let event = payload["sessionEvent"] as? String {
+                print("[StrideWatchConnectivity] received sessionEvent:", event, payload["workoutType"] ?? "-")
                 self.onSessionEvent?(event, payload["workoutType"] as? String)
             } else {
                 self.lastPacket = payload
@@ -52,6 +53,7 @@ final class WatchReceiver: NSObject, WCSessionDelegate {
     // MARK: WCSessionDelegate
 
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        print("[StrideWatchConnectivity] phone WCSession activation completed — state: \(activationState.rawValue), paired: \(session.isPaired), watchAppInstalled: \(session.isWatchAppInstalled), error: \(error?.localizedDescription ?? "none")")
         DispatchQueue.main.async { self.onReachabilityChange?() }
     }
 
