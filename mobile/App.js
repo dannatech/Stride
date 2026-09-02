@@ -347,6 +347,17 @@ function AppShell() {
     return unsubscribe;
   }, []);
 
+  // Fallback (and in practice, primary) start trigger: the moment real
+  // telemetry packets start arriving from the watch, a run is definitely
+  // active — this reuses the already-working RunPacket channel instead of
+  // depending solely on the separate sessionEvent signal above.
+  useEffect(() => {
+    if (watch.connected && !trackerRef.current.isTracking) {
+      trackerRef.current.start();
+      setActiveTab("live");
+    }
+  }, [watch.connected]);
+
   // AI: single call returning all outputs
   const [ai, setAi] = useState(FALLBACK_AI);
   const [aiLoading, setAiLoading] = useState(true);
